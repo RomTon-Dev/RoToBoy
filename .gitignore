@@ -1,0 +1,13 @@
+CMakeCache.txt
+CMakeFiles
+roms
+saves
+.cache
+build.sh
+**/Makefile
+!/Makefile
+.DS_Store
+bootrom/bin
+bootrom/obj
+build
+*.exe
