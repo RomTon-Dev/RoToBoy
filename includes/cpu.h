@@ -49,11 +49,11 @@ typedef struct {
     bool stopped; // CPU enters very low-power stop state
 
     // Pointer to the system Bus/MMU so the CPU can read/write memory
-    mmu* bus;
+    mmu* mmu;
 } CPU;
 
 // Core API Functions
-void cpu_init(CPU* cpu, mmu* bus); // Initialise CPU with default state
+void cpu_init(CPU* cpu, mmu* mmu); // Initialise CPU with default state
 uint8_t cpu_step(CPU* cpu); // Executes 1 instruction, returns M-cycles taken
 
 #endif

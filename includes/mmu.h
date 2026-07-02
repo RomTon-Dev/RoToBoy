@@ -21,9 +21,9 @@ typedef struct {
 } mmu;
 
 // The core API your CPU (and DMA) will use to interact with the world
-uint8_t bus_read(mmu* bus, uint16_t address);
+uint8_t bus_read(mmu* mmu, uint16_t address);
 // this will take the address, decide which memory it is accessing (consult memory map), and will return the corrresponding data
 // using the cartridge interface if neccesary.
-void bus_write(mmu* bus, uint16_t address, uint8_t value);
+void bus_write(mmu* mmu, uint16_t address, uint8_t value);
 // similar to read but writes instead (if allowed)
 #endif
