@@ -18,12 +18,12 @@ typedef struct {
     // Interrupt Enable (0xFFFF) and Boot ROM mapping flags can live here
     uint8_t ie_register;
     bool boot_rom_mapped;
-} Bus;
+} mmu;
 
 // The core API your CPU (and DMA) will use to interact with the world
-uint8_t bus_read(Bus* bus, uint16_t address);
+uint8_t bus_read(mmu* bus, uint16_t address);
 // this will take the address, decide which memory it is accessing (consult memory map), and will return the corrresponding data
 // using the cartridge interface if neccesary.
-void bus_write(Bus* bus, uint16_t address, uint8_t value);
+void bus_write(mmu* bus, uint16_t address, uint8_t value);
 // similar to read but writes instead (if allowed)
 #endif
