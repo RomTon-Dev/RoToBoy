@@ -1,10 +1,11 @@
 #include "cartridge.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-static uint8_t* get_rom_contents(const char* filepath);
+static bool load_rom_contents(Cartridge* cart, const char* filepath);
 
 bool cartridge_load(Cartridge* cart, const char* filepath)
 {
@@ -12,54 +13,51 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
         return false;
     }
 
-    uint8_t* rom_buffer = get_rom_contents(filepath);
-    if (rom_buffer == NULL) {
+    if (!load_rom_contents(cart, filepath)) {
         printf("Failed to get rom contents");
         return false;
     }
 
-    free(rom_buffer);
     return true;
 }
 
-static uint8_t* get_rom_contents(const char* filepath)
+static bool load_rom_contents(Cartridge* cart, const char* filepath)
 {
     FILE* file = fopen(filepath, "rb");
-    uint8_t* rom_buffer;
 
     if (file == NULL) {
         printf("Unable to open file %s", filepath);
-        return NULL;
+        return false;
     }
 
     // find size of file
     fseek(file, 0, SEEK_END);
-    size_t size = ftell(file);
-    if (size < 0) {
+    cart->rom_size = ftell(file);
+    if (cart->rom_size < 0) {
         printf("Failed to determine file size\n");
         fclose(file);
-        return NULL;
+        return false;
     }
     fseek(file, 0, SEEK_SET);
 
     // allocate memory for buffer
-    if (!(rom_buffer = malloc(size))) {
+    if (!(cart->rom_data = malloc((size_t)cart->rom_size))) {
         printf("Failed to allocate memory\n");
         fclose(file);
-        return NULL;
+        return false;
     }
 
     // read file contents into buffer
     uint8_t bytes_per_element = 1;
-    size_t bytes_read = fread(rom_buffer, bytes_per_element, size, file);
+    size_t bytes_read = fread(cart->rom_data, bytes_per_element, (size_t)cart->rom_size, file);
 
-    if (bytes_read != size) {
-        printf("Warning: Expected to read %zu bytes, but only read %zu\n", size, bytes_read);
+    if (bytes_read != (size_t)cart->rom_size) {
+        printf("Warning: Expected to read %zu bytes, but only read %zu\n", (size_t)cart->rom_size, bytes_read);
     }
 
     fclose(file);
 
-    return rom_buffer;
+    return true;
 }
 
 void cartridge_free(Cartridge* cart)
