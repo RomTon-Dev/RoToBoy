@@ -1,20 +1,21 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(MyProject C)
+# 2. Define the project name and programming language
+project(MyProject LANGUAGES C)
 
-# Use C11
+# 3. Set the C standard (e.g., C99 or C11)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Include header files
-include_directories(include)
-
-# Source files
-set(SOURCES
-    src/main.c
+# 4. Define your executable and list your source files
+# It is better to list them explicitly than to use file(GLOB ...)
+add_executable(MyProject 
+    src/main.c 
+    src/cartridge.c
 )
 
-# Create executable
-add_executable(${PROJECT_NAME} 
-    ${SOURCES}
+# 5. Tell CMake where to find your header files
+target_include_directories(MyProject PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}/includes
 )
