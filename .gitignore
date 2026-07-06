@@ -11,3 +11,4 @@ bootrom/bin
 bootrom/obj
 build
 *.exe
+compile_commands.json
