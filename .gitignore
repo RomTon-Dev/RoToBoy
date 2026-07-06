@@ -12,3 +12,4 @@ bootrom/obj
 build
 *.exe
 compile_commands.json
+tests/test_data/*.so
