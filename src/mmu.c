@@ -117,3 +117,114 @@ uint8_t bus_read(mmu* mmu, uint16_t address)
     fprintf(stderr, "Unhandled memory read at %04X\n", address);
     return 0xFF;
 }
+
+void bus_write(mmu* mmu, uint16_t address, uint8_t value)
+{
+    // Cartridge ROM (MBC Bank Switching / RAM Enable)
+    if (address < 0x8000) {
+        cartridge_write(mmu->cart, address, value);
+        return;
+    }
+
+    // VRAM
+    if (address < 0xA000) {
+        // TODO: forward to PPU
+        return;
+    }
+
+    // External RAM (Cartridge SRAM)
+    if (address < 0xC000) {
+        cartridge_write(mmu->cart, address, value);
+        return;
+    }
+
+    // Work RAM
+    if (address < 0xE000) {
+        mmu->wram[address - 0xC000] = value;
+        return;
+    }
+
+    // Echo RAM (Mirrors WRAM)
+    if (address < 0xFE00) {
+        mmu->wram[address - 0xE000] = value;
+        return;
+    }
+
+    // OAM (Sprite Attribute Table)
+    if (address < 0xFEA0) {
+        // TODO: forward to PPU
+        return;
+    }
+
+    // Unusable / Restricted Memory
+    if (address < 0xFF00) {
+        // Writes to this area are completely ignored by the hardware
+        return;
+    }
+
+    // IO Registers ($FF00 - $FF7F)
+    if (address < 0xFF80) {
+
+        // Joypad
+        if (address == 0xFF00) {
+            // joypad_write(&mmu->joypad, value);
+            return;
+        }
+
+        // Hardware Timers
+        if (address >= 0xFF04 && address <= 0xFF07) {
+            // timer_write(&mmu->timer, address, value);
+            return;
+        }
+
+        // Interrupt Flag (IF)
+        if (address == 0xFF0F) {
+            // Ensure the top 3 unused bits are always set to 1
+            mmu->if_register = value | 0xE0;
+            return;
+        }
+
+        // Audio (APU)
+        if (address >= 0xFF10 && address <= 0xFF3F) {
+            // apu_write(&mmu->apu, address, value);
+            return;
+        }
+
+        // Graphics (PPU)
+        if (address >= 0xFF40 && address <= 0xFF4B && address != 0xFF46) {
+            // ppu_write(&mmu->ppu, address, value);
+            return;
+        }
+
+        // OAM DMA Transfer (Native to MMU)
+        if (address == 0xFF46) {
+            mmu->dma_source_high = value;
+            // TODO: Trigger the actual memory copy process
+            return;
+        }
+
+        // Boot ROM Disable Switch (Native to MMU)
+        if (address == 0xFF50) {
+            // If any non-zero value is written, unmap the boot ROM permanently.
+            if (value != 0) {
+                mmu->boot_rom_mapped = false;
+            }
+            return;
+        }
+
+        // Unmapped IO registers ignore writes
+        return;
+    }
+
+    // HRAM
+    if (address < 0xFFFF) {
+        mmu->hram[address - 0xFF80] = value;
+        return;
+    }
+
+    // IE Register
+    if (address == 0xFFFF) {
+        mmu->ie_register = value;
+        return;
+    }
+}
