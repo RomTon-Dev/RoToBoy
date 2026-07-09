@@ -8,14 +8,14 @@
 typedef struct {
     // EXTERNAL SUB-COMPONENTS (they manage their own IO)
 
-    Cartridge cart; // External rom cartridge
+    Cartridge* cart; // External rom cartridge
     // GB-Timer timer;
     // PPU ppu;
     // APU apu;
 
     // RAW MEMORY BANKS
 
-    uint8_t boot_rom[256]; // Internal boot rom (0x0000 - 0x0100);
+    uint8_t boot_rom[256]; // Internal boot rom (0x0000 - 0x00FF);
     uint8_t wram[0x2000]; // 8 KB Work RAM (0xC000-0xDFFF)
     uint8_t hram[0x7F]; // 127 Bytes High RAM (0xFF80-0xFFFE)
 
@@ -27,6 +27,7 @@ typedef struct {
 
     bool boot_rom_mapped; // $FF50
     uint8_t dma_source_high; // $FF46
+    uint8_t if_register; // $FF0F
     uint8_t ie_register; // $FFFF
 } mmu;
 
