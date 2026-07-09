@@ -2,8 +2,13 @@
 #include "cartridge.h"
 #include <stdio.h>
 
-uint8_t bus_read(mmu* mmu, uint16_t address)
+uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 {
+    // If called by the CPU, other hardware components must progress 1 M-cycle
+    if (is_cpu) {
+        // system_tick(mmu);
+    }
+
     // Cartridge OR Boot ROM access
     if (address < 0x0100) {
         if (mmu->boot_rom_mapped) {
@@ -118,8 +123,13 @@ uint8_t bus_read(mmu* mmu, uint16_t address)
     return 0xFF;
 }
 
-void bus_write(mmu* mmu, uint16_t address, uint8_t value)
+void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 {
+    // If called by the CPU, other hardware components must progress 1 M-cycle
+    if (is_cpu) {
+        // system_tick(mmu);
+    }
+
     // Cartridge ROM (MBC Bank Switching / RAM Enable)
     if (address < 0x8000) {
         cartridge_write(mmu->cart, address, value);
@@ -227,4 +237,16 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value)
         mmu->ie_register = value;
         return;
     }
+}
+
+void dma_tick(mmu* mmu)
+{
+    // TODO: Impliment
+}
+void system_tick(mmu* mmu)
+{
+    dma_tick(mmu);
+    // ppu_tick(mmu->ppu);
+    // apu_tick(mmu->apu);
+    // timer_tick(mmu->timer);
 }

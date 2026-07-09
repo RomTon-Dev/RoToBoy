@@ -29,12 +29,22 @@ typedef struct {
     uint8_t dma_source_high; // $FF46
     uint8_t if_register; // $FF0F
     uint8_t ie_register; // $FFFF
+
+    // DMA state variables (To handle DMA transfer with accurate timing)
+    bool dma_active;
+    uint8_t dma_byte; // how many bytes have been copied (0 to 159)
+    uint8_t dma_delay; // simulates hardware setup delay (in M-cycles)
+    uint16_t dma_source_address; // starting address to copy from
 } mmu;
 
-// The core API your CPU (and DMA) will use to interact with the world
-uint8_t bus_read(mmu* mmu, uint16_t address);
+// The core API the CPU (and DMA) will use to interact with the world
+uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu);
 // this will take the address, decide which memory it is accessing (consult memory map), and will return the corrresponding data
 // using the cartridge interface if neccesary.
-void bus_write(mmu* mmu, uint16_t address, uint8_t value);
+void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu);
 // similar to read but writes instead (if allowed)
+void dma_tick(mmu* mmu);
+// ticks the DMA state if it is active by 1 M-cycle
+void system_tick(mmu* mmu);
+// ticks the whole system bu 1 M-cycle. Will be called when an M-cycle progresses
 #endif
