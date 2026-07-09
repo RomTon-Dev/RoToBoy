@@ -54,6 +54,6 @@ typedef struct {
 
 // Core API Functions
 void cpu_init(CPU* cpu, mmu* mmu); // Initialise CPU with default state
-uint8_t cpu_step(CPU* cpu); // Executes 1 instruction, returns M-cycles taken
+void cpu_step(CPU* cpu); // Executes 1 instruction
 
 #endif
