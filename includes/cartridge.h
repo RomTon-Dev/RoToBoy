@@ -4,18 +4,28 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef enum {
+    MBC_NONE = 0,
+    MBC_1,
+    MBC_2,
+    MBC_3,
+    MBC_5,
+} mbc_type_t;
+
 typedef struct {
     uint8_t* rom_data; // Complete raw ROM array allocated dynamically
     uint32_t rom_size;
+    uint8_t current_rom_bank;
 
     uint8_t* eram_data; // External RAM (for game saves), if present
     uint32_t eram_size;
-
-    uint8_t mbc_type; // e.g., 0 = ROM Only, 1 = MBC1, 3 = MBC3, etc.
-    uint8_t current_rom_bank;
     uint8_t current_ram_bank;
-    bool ram_enabled;
-    // ... Any other MBC-specific state variables (like banking modes). I haven't fully read up on this yet
+    bool eram_enabled;
+
+    mbc_type_t mbc_type; // e.g. MBC_NONE, MBC_1, etc
+    bool has_battery; // True if RAM needs to be saved to a .sav file
+    bool has_rtc; // True if the cart has a Real-Time Clock (MBC3)
+
 } Cartridge;
 
 bool cartridge_load(Cartridge* cart, const char* filepath);
