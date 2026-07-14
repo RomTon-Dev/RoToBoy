@@ -32,12 +32,20 @@ static bool load_rom_contents(Cartridge* cart, const char* filepath)
 
     // find size of file
     fseek(file, 0, SEEK_END);
-    cart->rom_size = ftell(file);
-    if (cart->rom_size < 0) {
+
+    int64_t size = ftell(file);
+    if (size < 0) {
         printf("Failed to determine file size\n");
+        cart->rom_size = 0;
+        fclose(file);
+        return false;
+    } else if (size > UINT32_MAX) {
+        printf("File too large to be valid ROM\n");
+        cart->rom_size = 0;
         fclose(file);
         return false;
     }
+    cart->rom_size = (uint32_t)size;
     fseek(file, 0, SEEK_SET);
 
     // allocate memory for buffer
