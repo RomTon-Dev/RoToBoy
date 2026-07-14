@@ -1,12 +1,18 @@
 #include "mmu.h"
 #include "cartridge.h"
+#include <stdint.h>
 #include <stdio.h>
 
 uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 {
     // If called by the CPU, other hardware components must progress 1 M-cycle
     if (is_cpu) {
-        // system_tick(mmu);
+        system_tick(mmu);
+    }
+
+    // DMA bus lock
+    if (mmu->dma_active && address < 0xFF00) {
+        return 0xFF;
     }
 
     // Cartridge OR Boot ROM access
@@ -127,7 +133,12 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 {
     // If called by the CPU, other hardware components must progress 1 M-cycle
     if (is_cpu) {
-        // system_tick(mmu);
+        system_tick(mmu);
+    }
+
+    // DMA bus lock
+    if (mmu->dma_active && address < 0xFF00) {
+        return;
     }
 
     // Cartridge ROM (MBC Bank Switching / RAM Enable)
@@ -209,7 +220,14 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
         // OAM DMA Transfer (Native to MMU)
         if (address == 0xFF46) {
             mmu->dma_source_high = value;
-            // TODO: Trigger the actual memory copy process
+
+            mmu->dma_source_address = value << 8;
+
+            mmu->dma_delay = 2; // dma takes 1-2 M cycles to start
+
+            // start copying process
+            mmu->dma_byte = 0;
+            mmu->dma_active = true;
             return;
         }
 
@@ -241,7 +259,29 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 
 void dma_tick(mmu* mmu)
 {
-    // TODO: Impliment
+    if (mmu->dma_active == false) {
+        return;
+    }
+
+    if (mmu->dma_delay > 0) {
+        mmu->dma_delay--;
+        return;
+    }
+
+    uint16_t current_source = mmu->dma_source_address + mmu->dma_byte;
+
+    uint8_t current_byte = bus_read(mmu, current_source, false);
+
+    uint16_t destination = 0xFE00 + mmu->dma_byte;
+
+    bus_write(mmu, destination, current_byte, false);
+
+    // advance state
+    mmu->dma_byte++;
+    if (mmu->dma_byte >= 160) {
+        mmu->dma_active = false;
+        mmu->dma_byte = 0;
+    }
 }
 void system_tick(mmu* mmu)
 {
