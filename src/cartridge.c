@@ -18,6 +18,138 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
         return false;
     }
 
+    cart->current_rom_bank = 0; // Initialize rom bank to be Bank 0
+
+    // We need to determine the cartridge type next
+    uint8_t cartridge_type = cart->rom_data[0x0147];
+
+    // By default, set everything to false / none
+    cart->eram_enabled = false;
+    cart->mbc_type = MBC_NONE;
+    cart->has_battery = false;
+    cart->has_rtc = false;
+    cart->current_rom_bank = 1; // Bank 0 is fixed, switchable area starts at 1
+    cart->current_ram_bank = 0; // Good idea to initialize this too!
+    switch (cartridge_type) {
+    // Based on this cartridge_type, determine the mbc_type, has_battery, has_rtc and eram_enabled
+    case 0x00:
+        // ROM ONLY
+        break;
+    case 0x01:
+        // MBC1
+        cart->mbc_type = MBC_1;
+        break;
+    case 0x02:
+        // MBC1+RAM
+        cart->mbc_type = MBC_1;
+        cart->eram_enabled = true;
+        break;
+    case 0x03:
+        // MBC1+RAM+BATTERY
+        cart->mbc_type = MBC_1;
+        cart->eram_enabled = true;
+        cart->has_battery = true;
+        break;
+    case 0x05:
+        // MBC2
+        cart->mbc_type = MBC_2;
+        break;
+    case 0x06:
+        // MBC2+BATTERY
+        cart->mbc_type = MBC_2;
+        cart->has_battery = true;
+        break;
+    case 0x08:
+        // ROM+RAM
+        cart->eram_enabled = true;
+        break;
+    case 0x09:
+        // ROM+RAM+BATTERY
+        cart->eram_enabled = true;
+        cart->has_battery = true;
+        break;
+    case 0x0B:
+    case 0x0C:
+    case 0x0D:
+        printf("MMM01 is not currently supported.\n");
+        return false;
+    case 0x0F:
+        // MBC3+TIMER+BATTERY
+        cart->mbc_type = MBC_3;
+        cart->has_rtc = true;
+        cart->has_battery = true;
+        break;
+    case 0x10:
+        // MBC3+TIMER+RAM+BATTERY
+        cart->mbc_type = MBC_3;
+        cart->has_rtc = true;
+        cart->eram_enabled = true;
+        cart->has_battery = true;
+        break;
+    case 0x11:
+        // MBC3
+        cart->mbc_type = MBC_3;
+        break;
+    case 0x12:
+        // mbc3+ram
+        cart->mbc_type = MBC_3;
+        cart->eram_enabled = true;
+        break;
+    case 0x13:
+        // MBC3+RAM+BATTERY
+        cart->mbc_type = MBC_3;
+        cart->eram_enabled = true;
+        cart->has_battery = true;
+        break;
+    case 0x19:
+        // MBC5
+        cart->mbc_type = MBC_5;
+        break;
+    case 0x1A:
+        // MBC5+RAM
+        cart->mbc_type = MBC_5;
+        cart->eram_enabled = true;
+        break;
+    case 0x1B:
+        // MBC5+RAM+BATTERY
+        cart->mbc_type = MBC_5;
+        cart->eram_enabled = true;
+        cart->has_battery = true;
+        break;
+    case 0x1C:
+        // MBC5+RUMBLE
+        cart->mbc_type = MBC_5;
+        break;
+    case 0x1D:
+        // MBC5+RUMBLE+RAM
+        cart->mbc_type = MBC_5;
+        cart->eram_enabled = true;
+        break;
+    case 0x1E:
+        // MBC5+RUMBLE+RAM+BATTERY
+        cart->mbc_type = MBC_5;
+        cart->eram_enabled = true;
+        cart->has_battery = true;
+        break;
+    case 0x20:
+        // MBC6
+    case 0x22:
+        // MBC7+SENSOR+RUMBLE+RAM+BATTERY
+    case 0xFC:
+        // POCKET CAMERA
+    case 0xFD:
+        // BANDAI TAMA5
+    case 0xFE:
+        // HuC3
+    case 0xFF:
+        // HuC1+RAM+BATTERY
+        printf("This cartridge type is not currently supported\n");
+        return false;
+    default:
+        // Invalid cartridge_type
+        printf("Invalid cartridge type\n");
+        return false;
+    }
     return true;
 }
 
