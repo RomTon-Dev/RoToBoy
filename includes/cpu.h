@@ -42,6 +42,7 @@ typedef struct {
     // Control Registers
     uint16_t sp; // Stack Pointer
     uint16_t pc; // Program Counter
+    uint8_t ir; // Instruction Register
 
     // Internal CPU State
     bool master_interrupt_enable; // IME flag (controlled by EI and DI instructions)
