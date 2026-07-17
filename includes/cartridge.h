@@ -16,10 +16,12 @@ typedef struct {
     uint8_t* rom_data; // Complete raw ROM array allocated dynamically
     uint32_t rom_size;
     uint8_t current_rom_bank;
+    uint8_t total_rom_banks; // Total number of 8 KiB ROM banks
 
     uint8_t* eram_data; // External RAM (for game saves), if present
     uint32_t eram_size;
     uint8_t current_ram_bank;
+    uint8_t total_ram_banks; // Total number of 8 KiB RAM banks
     bool eram_enabled;
 
     mbc_type_t mbc_type; // e.g. MBC_NONE, MBC_1, etc

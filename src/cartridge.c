@@ -4,8 +4,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static bool load_rom_contents(Cartridge* cart, const char* filepath);
+static bool load_battery_save(Cartridge* cart, const char* filepath);
 
 bool cartridge_load(Cartridge* cart, const char* filepath)
 {
@@ -17,8 +19,6 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
         printf("Failed to get rom contents");
         return false;
     }
-
-    cart->current_rom_bank = 0; // Initialize rom bank to be Bank 0
 
     // We need to determine the cartridge type next
     uint8_t cartridge_type = cart->rom_data[0x0147];
@@ -150,9 +150,45 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
         printf("Invalid cartridge type\n");
         return false;
     }
+
+    // Now that we have the cartridge data, we need the rom and ram sizes
+    cart->rom_size = 32 * (1 << 10) * (1 << cart->rom_data[0x0148]);
+    cart->total_rom_banks = 2 << cart->rom_data[0x0148];
+
+    if (cart->eram_enabled) {
+        switch (cart->rom_data[0x149]) {
+        case 0x00:
+        case 0x01:
+            break;
+        case 0x02:
+            cart->total_ram_banks = 1;
+            break;
+        case 0x03:
+            cart->total_ram_banks = 4;
+            break;
+        case 0x04:
+            cart->total_ram_banks = 16;
+            break;
+        case 0x05:
+            cart->total_ram_banks = 8;
+            break;
+        default:
+            printf("Invalid RAM size\n");
+            return false;
+            break;
+        }
+        cart->eram_size = cart->total_ram_banks * 8 * (1 << 10);
+        if (!(cart->eram_data = malloc((size_t)cart->eram_size))) {
+            printf("Failed to allocate eram memory\n");
+            return false;
+        }
+        memset(cart->eram_data, 0xFF, cart->eram_size); // Initialize eram data to 0xFF
+    }
+
     return true;
 }
 
+// TODO: Implement load_battery_save(Cartridge* cart, const char* filepath)
 static bool load_rom_contents(Cartridge* cart, const char* filepath)
 {
     FILE* file = fopen(filepath, "rb");
@@ -182,7 +218,7 @@ static bool load_rom_contents(Cartridge* cart, const char* filepath)
 
     // allocate memory for buffer
     if (!(cart->rom_data = malloc((size_t)cart->rom_size))) {
-        printf("Failed to allocate memory\n");
+        printf("Failed to allocate rom memory\n");
         fclose(file);
         return false;
     }
