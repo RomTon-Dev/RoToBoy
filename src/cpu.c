@@ -84,7 +84,7 @@ static void handle_interrupts(CPU* cpu)
     uint8_t pending_interrputs = cpu->mmu->if_register & cpu->mmu->ie_register;
     if (pending_interrputs != 0) {
         cpu->halted = false; // wake up cpu
-                             //
+
         if (!cpu->master_interrupt_enable) {
             return;
         }
