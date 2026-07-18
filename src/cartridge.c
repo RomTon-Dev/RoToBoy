@@ -8,6 +8,7 @@
 
 static bool load_rom_contents(Cartridge* cart, const char* filepath);
 static bool load_battery_save(Cartridge* cart, const char* filepath);
+static char* get_save_filepath(const char* filepath);
 
 bool cartridge_load(Cartridge* cart, const char* filepath)
 {
@@ -125,8 +126,7 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
         cart->mbc_type = MBC_5;
         cart->eram_enabled = true;
         break;
-    case 0x1E:
-        // MBC5+RUMBLE+RAM+BATTERY
+    case 0x1E: // MBC5+RUMBLE+RAM+BATTERY
         cart->mbc_type = MBC_5;
         cart->eram_enabled = true;
         cart->has_battery = true;
@@ -156,39 +156,109 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
     cart->total_rom_banks = 2 << cart->rom_data[0x0148];
 
     if (cart->eram_enabled) {
-        switch (cart->rom_data[0x149]) {
+        // Initialize defaults to prevent garbage data math
+        cart->total_ram_banks = 0;
+        cart->eram_size = 0;
+
+        switch (cart->rom_data[0x0149]) {
         case 0x00:
+            cart->eram_size = 0;
+            break;
         case 0x01:
+            cart->eram_size = 2048; // 2 KiB (Does not use full banks)
             break;
         case 0x02:
             cart->total_ram_banks = 1;
+            cart->eram_size = 8 * (1 << 10);
             break;
         case 0x03:
             cart->total_ram_banks = 4;
+            cart->eram_size = 32 * (1 << 10);
             break;
         case 0x04:
             cart->total_ram_banks = 16;
+            cart->eram_size = 128 * (1 << 10);
             break;
         case 0x05:
             cart->total_ram_banks = 8;
+            cart->eram_size = 64 * (1 << 10);
             break;
         default:
             printf("Invalid RAM size\n");
             return false;
-            break;
         }
-        cart->eram_size = cart->total_ram_banks * 8 * (1 << 10);
-        if (!(cart->eram_data = malloc((size_t)cart->eram_size))) {
-            printf("Failed to allocate eram memory\n");
-            return false;
-        }
-        memset(cart->eram_data, 0xFF, cart->eram_size); // Initialize eram data to 0xFF
-    }
 
+        if (cart->eram_size > 0) {
+            if (!(cart->eram_data = malloc((size_t)cart->eram_size))) {
+                printf("Failed to allocate eram memory\n");
+                return false;
+            }
+
+            // 1. Initialize fresh RAM to 0xFF
+            memset(cart->eram_data, 0xFF, cart->eram_size);
+
+            // 2. If it has a battery, overwrite the 0xFFs with the save file
+            if (cart->has_battery) {
+                load_battery_save(cart, filepath);
+            }
+        }
+    }
     return true;
 }
 
-// TODO: Implement load_battery_save(Cartridge* cart, const char* filepath)
+static bool load_battery_save(Cartridge* cart, const char* filepath)
+{
+    char* save_filepath = get_save_filepath(filepath);
+    FILE* save_file = fopen(save_filepath, "rb");
+    if (save_file == NULL) {
+        return false; // No save file exists yet
+    }
+
+    // Read exactly the cartridge's RAM size from the file
+    size_t bytes_read = fread(cart->eram_data, 1, cart->eram_size, save_file);
+
+    // If the save file was smaller than expected, pad the rest with 0xFF
+    if (bytes_read < cart->eram_size) {
+        memset(cart->eram_data + bytes_read, 0xFF, cart->eram_size - bytes_read);
+    }
+
+    fclose(save_file);
+    free(save_filepath);
+    return true;
+}
+
+static char* get_save_filepath(const char* filepath)
+{
+    // The filepath is the path to the cartridge
+    // The .sav file should be called <filepath>.sav
+    // e.g. if the cartridge is "path/to/rom/file.gb", the sav is "path/to/rom/file.sav"
+    size_t filepath_size = 0;
+    {
+        int i = 0;
+        while (filepath[i] != '\0') {
+            i++;
+        }
+        filepath_size = i;
+    }
+
+    // filepath_size + 2 because:
+    // 1. '.sav' is 1 char longer than '.gb'
+    // 2. We need 1 extra byte for the '\0' null terminator
+    char* sav_filepath = malloc((filepath_size + 2) * sizeof(char));
+
+    for (size_t i = 0; i < filepath_size - 2; i++) {
+        sav_filepath[i] = filepath[i];
+    }
+
+    // last 3 chars now sav instead of gb
+    sav_filepath[filepath_size - 2] = 's';
+    sav_filepath[filepath_size - 1] = 'a';
+    sav_filepath[filepath_size] = 'v';
+    sav_filepath[filepath_size + 1] = '\0';
+
+    return sav_filepath;
+}
+
 static bool load_rom_contents(Cartridge* cart, const char* filepath)
 {
     FILE* file = fopen(filepath, "rb");
@@ -238,4 +308,6 @@ static bool load_rom_contents(Cartridge* cart, const char* filepath)
 
 void cartridge_free(Cartridge* cart)
 {
+    free(cart->rom_data);
+    free(cart->eram_data);
 }
