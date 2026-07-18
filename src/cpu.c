@@ -8,6 +8,7 @@ void cpu_init(CPU* cpu, mmu* mmu)
     cpu->master_interrupt_enable = false; // Interrupts disabled
     cpu->halted = false; // CPU starts awake
     cpu->stopped = false;
+    cpu->ir = 0; // nop
 
     cpu->a = 0x00;
     cpu->f = 0x00;
