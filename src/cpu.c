@@ -43,3 +43,36 @@ void cpu_init(CPU* cpu, mmu* mmu)
         // add initalisations for ppu, apu, timer, joypad once implimented
     }
 }
+
+static void execute_block_0(CPU* cpu);
+static void execute_block_1(CPU* cpu);
+static void execute_block_2(CPU* cpu);
+static void execute_block_3(CPU* cpu);
+static void execute_cb(CPU* cpu);
+static void handle_interrupts(CPU* cpu);
+
+void cpu_step(CPU* cpu)
+{
+    handle_interrupts(cpu);
+    // rememer IR already containes the correct opcode fetched in previous execution
+    if (cpu->ir == 0xCB) {
+        cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
+        execute_cb(cpu);
+    } else {
+        uint8_t block = (cpu->ir & 0xC0) >> 6; // bits 7 and 8
+        switch (block) {
+        case 0:
+            execute_block_0(cpu);
+            break;
+        case 1:
+            execute_block_1(cpu);
+            break;
+        case 2:
+            execute_block_2(cpu);
+            break;
+        case 3:
+            execute_block_3(cpu);
+            break;
+        }
+    }
+}
