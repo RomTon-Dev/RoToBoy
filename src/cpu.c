@@ -1,4 +1,5 @@
 #include "cpu.h"
+#include "mmu.h"
 #include <string.h>
 
 void cpu_init(CPU* cpu, mmu* mmu)
@@ -50,6 +51,7 @@ static void execute_block_2(CPU* cpu);
 static void execute_block_3(CPU* cpu);
 static void execute_cb(CPU* cpu);
 static void handle_interrupts(CPU* cpu);
+static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address);
 
 void cpu_step(CPU* cpu)
 {
@@ -75,4 +77,64 @@ void cpu_step(CPU* cpu)
             break;
         }
     }
+}
+
+static void handle_interrupts(CPU* cpu)
+{
+    uint8_t pending_interrputs = cpu->mmu->if_register & cpu->mmu->ie_register;
+    if (pending_interrputs != 0) {
+        cpu->halted = false; // wake up cpu
+                             //
+        if (!cpu->master_interrupt_enable) {
+            return;
+        }
+
+        uint16_t jump_address = 0x0040; // VBlank interrupt handler address
+        uint16_t return_address = cpu->pc - 1;
+        uint8_t mask = 1;
+        for (int i = 0; i < 5; i++) {
+            if ((pending_interrputs & mask) != 0) {
+                // reset IME and IR bit
+                cpu->master_interrupt_enable = false;
+                cpu->mmu->if_register &= ~mask;
+                perform_isr(cpu, jump_address, return_address);
+                break;
+            }
+
+            mask = mask << 1;
+
+            switch (i) {
+            case 0: // LCD
+                jump_address = 0x0048;
+                break;
+            case 1: // Timer
+                jump_address = 0x0050;
+                break;
+            case 2: // Serial
+                jump_address = 0x0058;
+                break;
+            case 3: // Joypad
+                jump_address = 0x0060;
+                break;
+            }
+        }
+    }
+}
+
+static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address)
+{
+    // tick 2 M cycles
+    system_tick(cpu->mmu);
+    system_tick(cpu->mmu);
+    // push return address onto stack (2 M-cycles)
+    uint8_t msb = (return_address) >> 8 & 0xFF;
+    uint8_t lsb = return_address & 0xFF;
+    cpu->sp--;
+    bus_write(cpu->mmu, cpu->sp, msb, true);
+    cpu->sp--;
+    bus_write(cpu->mmu, cpu->sp, lsb, true);
+    // jump to jump address
+    cpu->pc = jump_address;
+    // pre-fetch first instruction
+    cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
 }
