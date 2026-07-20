@@ -52,6 +52,8 @@ static void execute_block_3(CPU* cpu);
 static void execute_cb(CPU* cpu);
 static void handle_interrupts(CPU* cpu);
 static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address);
+static uint8_t read_reg8(CPU* cpu, uint8_t index);
+static void write_reg8(CPU* cpu, uint8_t value, uint8_t index);
 
 void cpu_step(CPU* cpu)
 {
@@ -137,4 +139,49 @@ static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address
     cpu->pc = jump_address;
     // pre-fetch first instruction
     cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
+}
+
+static uint8_t read_reg8(CPU* cpu, uint8_t index)
+{
+    switch (index) {
+    case 0:
+        return cpu->b;
+    case 1:
+        return cpu->c;
+    case 2:
+        return cpu->d;
+    case 3:
+        return cpu->e;
+    case 4:
+        return cpu->h;
+    case 5:
+        return cpu->l;
+    case 6:
+        return bus_read(cpu->mmu, cpu->hl, true); // [HL]
+    case 7:
+        return cpu->a;
+    }
+    return 0xFF;
+}
+
+static void write_reg8(CPU* cpu, uint8_t value, uint8_t index)
+{
+    switch (index) {
+    case 0:
+        cpu->b = value;
+    case 1:
+        cpu->c = value;
+    case 2:
+        cpu->d = value;
+    case 3:
+        cpu->e = value;
+    case 4:
+        cpu->h = value;
+    case 5:
+        cpu->l = value;
+    case 6:
+        bus_write(cpu->mmu, cpu->hl, value, true); // [HL]
+    case 7:
+        cpu->a = value;
+    }
 }
