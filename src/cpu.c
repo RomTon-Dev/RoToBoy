@@ -1,6 +1,18 @@
 #include "cpu.h"
 #include "mmu.h"
 #include <string.h>
+#define ADD 0
+#define ADC 1
+#define SUB 2
+#define SBC 3
+#define AND 4
+#define XOR 5
+#define OR 6
+#define CP 7
+#define Z 0x80
+#define N 0x40
+#define H 0x20
+#define C 0x10
 
 void cpu_init(CPU* cpu, mmu* mmu)
 {
@@ -54,6 +66,8 @@ static void handle_interrupts(CPU* cpu);
 static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address);
 static uint8_t read_reg8(CPU* cpu, uint8_t index);
 static void write_reg8(CPU* cpu, uint8_t value, uint8_t index);
+static void set_flag(CPU* cpu, uint8_t flag);
+static void unset_flag(CPU* cpu, uint8_t flag);
 
 void cpu_step(CPU* cpu)
 {
@@ -185,17 +199,113 @@ static void write_reg8(CPU* cpu, uint8_t value, uint8_t index)
         cpu->a = value;
     }
 }
+static void assign_flag(CPU* cpu, uint8_t flag, bool condition)
+{
+    if (condition) {
+        cpu->f |= flag; // Set if true
+    } else {
+        cpu->f &= ~flag; // Unset if false
+    }
+}
 
 static void execute_block_1(CPU* cpu)
 {
-    uint8_t dest = (cpu->ir >> 3) & 0x07;
-    uint8_t src = (cpu->ir & 0x07);
+    uint8_t dest = (cpu->ir >> 3) & 0x07; // bits 3, 4, 5
+    uint8_t src = (cpu->ir & 0x07); // bits 0, 1, 2
     if (cpu->ir == 0x76) {
         // halt
         cpu->halted = true;
     } else {
         uint8_t value = read_reg8(cpu, src);
         write_reg8(cpu, value, dest);
+    }
+    cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
+}
+
+static void execute_block_2(CPU* cpu)
+{
+    uint8_t operand_reg = (cpu->ir & 0x07); // bits 0, 1, 2
+    uint8_t operand = read_reg8(cpu, operand_reg);
+    uint8_t operation = (cpu->ir >> 3) & 0x07; // bits 3, 4, 5
+    switch (operation) {
+    case ADD: {
+        uint16_t result = cpu->a + operand;
+        assign_flag(cpu, Z, (result & 0xFF) == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, ((cpu->a & 0x0F) + (operand & 0x0F)) > 0x0F); // is there a carry for the 5th bit
+        assign_flag(cpu, C, result > 0xFF);
+        cpu->a = result & 0xFF;
+        break;
+    }
+    case ADC: {
+        int c = (cpu->f & C) >> 4;
+        int a = cpu->a;
+        int op = operand;
+        int result = a + op + c;
+        assign_flag(cpu, Z, (result & 0xFF) == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, (a & 0x0F) + (op & 0x0F) + c > 0x0F); // is there a carry for the 5th bit
+        assign_flag(cpu, C, result > 0xFF);
+        cpu->a = (uint8_t)(result & 0xFF);
+        break;
+    }
+    case SUB: {
+        uint8_t result = cpu->a - operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, true);
+        assign_flag(cpu, H, (cpu->a & 0x0F) < (operand & 0x0F)); // is there a carry for the 5th bit
+        assign_flag(cpu, C, cpu->a < operand);
+        cpu->a = result;
+        break;
+    }
+    case SBC: {
+        int c = (cpu->f & C) >> 4;
+        int a = cpu->a;
+        int op = operand;
+        int result = a - op - c;
+        assign_flag(cpu, Z, (result & 0xFF) == 0);
+        assign_flag(cpu, N, true);
+        assign_flag(cpu, H, (a & 0x0F) - (op & 0x0F) - c < 0); // is there a carry for the 5th bit
+        assign_flag(cpu, C, result < 0);
+        cpu->a = (uint8_t)(result & 0xFF);
+        break;
+    }
+    case AND: {
+        uint8_t result = cpu->a & operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, true);
+        assign_flag(cpu, C, false);
+        cpu->a = result;
+        break;
+    }
+    case XOR: {
+        uint8_t result = cpu->a ^ operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, false);
+        assign_flag(cpu, C, false);
+        cpu->a = result;
+        break;
+    }
+    case OR: {
+        uint8_t result = cpu->a | operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, false);
+        assign_flag(cpu, C, false);
+        cpu->a = result;
+        break;
+    }
+    case CP: {
+        // same as SUB but only updates flags
+        uint8_t result = cpu->a - operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, true);
+        assign_flag(cpu, H, (cpu->a & 0x0F) < (operand & 0x0F)); // is there a carry for the 5th bit
+        assign_flag(cpu, C, cpu->a < operand);
+        break;
+    }
     }
     cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
 }
