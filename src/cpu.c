@@ -185,3 +185,17 @@ static void write_reg8(CPU* cpu, uint8_t value, uint8_t index)
         cpu->a = value;
     }
 }
+
+static void execute_block_1(CPU* cpu)
+{
+    uint8_t dest = (cpu->ir >> 3) & 0x07;
+    uint8_t src = (cpu->ir & 0x07);
+    if (cpu->ir == 0x76) {
+        // halt
+        cpu->halted = true;
+    } else {
+        uint8_t value = read_reg8(cpu, src);
+        write_reg8(cpu, value, dest);
+    }
+    cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
+}
