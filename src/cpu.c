@@ -207,6 +207,105 @@ static void assign_flag(CPU* cpu, uint8_t flag, bool condition)
     }
 }
 
+static void execute_block_0(CPU* cpu)
+{
+    uint8_t z = cpu->ir & 0x07; // bits 0, 1, 2
+    uint8_t y = (cpu->ir >> 3) & 0x07; // bits 3, 4, 5
+    uint8_t p = y >> 1; // 16-bit register index (0=BC, 1=DE, 2=HL, 3=SP/AF)
+    uint8_t q = y & 1; // bit 3
+
+    switch (z) {
+    case 0:
+        switch (y) {
+        case 0:
+            // NOP
+            break;
+        case 1:
+            // LD [imm16], SP
+            break;
+        case 2:
+            // STOP
+            break;
+        case 3:
+            // JR imm8 (Unconditional)
+            break;
+        default:
+            // JR cond, imm8 (y = 4: NZ, 5: Z, 6: NC, 7: C)
+            break;
+        }
+        break;
+
+    case 1:
+        if (q == 0) {
+            // LD r16[p], imm16
+        } else {
+            // ADD HL, r16[p]
+        }
+        break;
+
+    case 2:
+        if (q == 0) {
+            // LD [r16mem], A (BC, DE, HL+, HL-)
+        } else {
+            // LD A, [r16mem] (BC, DE, HL+, HL-)
+        }
+        break;
+
+    case 3:
+        if (q == 0) {
+            // INC r16[p]
+        } else {
+            // DEC r16[p]
+        }
+        break;
+
+    case 4:
+        // INC r8[y]
+        break;
+
+    case 5:
+        // DEC r8[y]
+        break;
+
+    case 6:
+        // LD r8[y], imm8
+        break;
+
+    case 7:
+        // Accumulator / Flag Operations
+        switch (y) {
+        case 0:
+            // RLCA
+            break;
+        case 1:
+            // RRCA
+            break;
+        case 2:
+            // RLA
+            break;
+        case 3:
+            // RRA
+            break;
+        case 4:
+            // DAA
+            break;
+        case 5:
+            // CPL
+            break;
+        case 6:
+            // SCF
+            break;
+        case 7:
+            // CCF
+            break;
+        }
+        break;
+    }
+
+    // Trailing prefetch
+    cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
+}
+
 static void execute_block_1(CPU* cpu)
 {
     uint8_t dest = (cpu->ir >> 3) & 0x07; // bits 3, 4, 5
