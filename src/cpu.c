@@ -210,7 +210,7 @@ static void assign_flag(CPU* cpu, uint8_t flag, bool condition)
 static void execute_block_0(CPU* cpu)
 {
     uint8_t z = cpu->ir & 0x07; // bits 0, 1, 2
-    uint8_t y = (cpu->ir >> 3) & 0x07; // bits 3, 4, 5
+    uint8_t y = (cpu->ir >> 3) & 0x07; // bits 3, 4, 5 (8-bit register index)
     uint8_t p = y >> 1; // 16-bit register index (0=BC, 1=DE, 2=HL, 3=SP/AF)
     uint8_t q = y & 1; // bit 3
 
