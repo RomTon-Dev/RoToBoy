@@ -66,8 +66,7 @@ static void handle_interrupts(CPU* cpu);
 static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address);
 static uint8_t read_reg8(CPU* cpu, uint8_t index);
 static void write_reg8(CPU* cpu, uint8_t value, uint8_t index);
-static void set_flag(CPU* cpu, uint8_t flag);
-static void unset_flag(CPU* cpu, uint8_t flag);
+static void assign_flag(CPU* cpu, uint8_t flag, bool cond);
 
 void cpu_step(CPU* cpu)
 {
