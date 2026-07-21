@@ -1,5 +1,7 @@
 #include "cpu.h"
 #include "mmu.h"
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #define ADD 0
 #define ADC 1
@@ -66,7 +68,14 @@ static void handle_interrupts(CPU* cpu);
 static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address);
 static uint8_t read_reg8(CPU* cpu, uint8_t index);
 static void write_reg8(CPU* cpu, uint8_t value, uint8_t index);
+static uint16_t read_reg16(CPU* cpu, uint8_t index);
+static void write_reg16(CPU* cpu, uint16_t value, uint8_t index);
+static uint16_t read_reg16_mem(CPU* cpu, uint8_t index);
+static uint16_t read_reg16_stk(CPU* cpu, uint8_t index);
+static void write_reg16_stk(CPU* cpu, uint16_t value, uint8_t index);
 static void assign_flag(CPU* cpu, uint8_t flag, bool cond);
+static bool check_condition(CPU* cpu, uint8_t cond);
+static bool get_flag(CPU* cpu, uint8_t flag);
 
 void cpu_step(CPU* cpu)
 {
@@ -198,6 +207,58 @@ static void write_reg8(CPU* cpu, uint8_t value, uint8_t index)
         cpu->a = value;
     }
 }
+
+static uint16_t read_reg16(CPU* cpu, uint8_t index)
+{
+    switch (index) {
+    case 0:
+        return cpu->bc;
+    case 1:
+        return cpu->de;
+    case 2:
+        return cpu->hl;
+    case 3:
+        return cpu->sp;
+    }
+}
+static void write_reg16(CPU* cpu, uint16_t value, uint8_t index)
+{
+    switch (index) {
+    case 0:
+        cpu->bc = value;
+        break;
+    case 1:
+        cpu->de = value;
+        break;
+    case 2:
+        cpu->hl = value;
+        break;
+    case 3:
+        cpu->sp = value;
+        break;
+    }
+}
+
+static uint16_t read_reg16_mem(CPU* cpu, uint8_t index)
+{
+    switch (index) {
+    case 0:
+        return cpu->bc;
+    case 1:
+        return cpu->de;
+    case 2:
+        return cpu->hl++;
+    case 3:
+        return cpu->hl--;
+    }
+    return 0xFFFF; // should never reach here
+}
+
+static bool get_flag(CPU* cpu, uint8_t flag)
+{
+    return (cpu->f & flag) != 0;
+}
+
 static void assign_flag(CPU* cpu, uint8_t flag, bool condition)
 {
     if (condition) {
@@ -205,6 +266,21 @@ static void assign_flag(CPU* cpu, uint8_t flag, bool condition)
     } else {
         cpu->f &= ~flag; // Unset if false
     }
+}
+
+static bool check_condition(CPU* cpu, uint8_t cond)
+{
+    switch (cond & 0x03) {
+    case 0:
+        return !(cpu->f & Z); // NZ (Not Zero)
+    case 1:
+        return (cpu->f & Z); // Z  (Zero)
+    case 2:
+        return !(cpu->f & C); // NC (No Carry)
+    case 3:
+        return (cpu->f & C); // C  (Carry)
+    }
+    return false;
 }
 
 static void execute_block_0(CPU* cpu)
@@ -220,83 +296,223 @@ static void execute_block_0(CPU* cpu)
         case 0:
             // NOP
             break;
-        case 1:
+        case 1: {
             // LD [imm16], SP
+            uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint16_t write_address = (imm_msb << 8) | imm_lsb;
+            bus_write(cpu->mmu, write_address, (uint8_t)(cpu->sp & 0xFF), true); // lsb(SP)
+            bus_write(cpu->mmu, write_address + 1, (uint8_t)((cpu->sp >> 8) & 0xFF), true); // msb(SP)
             break;
+        }
         case 2:
             // STOP
+            cpu->stopped = true;
             break;
-        case 3:
+        case 3: {
             // JR imm8 (Unconditional)
+            int8_t offset = (int8_t)(bus_read(cpu->mmu, cpu->pc++, true));
+            cpu->pc += offset;
+            system_tick(cpu->mmu); // takes 1 M-cycle
             break;
-        default:
+        }
+        default: {
             // JR cond, imm8 (y = 4: NZ, 5: Z, 6: NC, 7: C)
+            int8_t offset = (int8_t)(bus_read(cpu->mmu, cpu->pc++, true));
+            bool condition = check_condition(cpu, y);
+            if (condition) {
+                cpu->pc += offset;
+                system_tick(cpu->mmu);
+            }
             break;
+        }
         }
         break;
 
     case 1:
         if (q == 0) {
             // LD r16[p], imm16
+            uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint16_t imm16 = (imm_msb << 8) | imm_lsb;
+            write_reg16(cpu, imm16, p);
+
         } else {
             // ADD HL, r16[p]
+            uint16_t r16 = read_reg16(cpu, p);
+            uint16_t hl = cpu->hl;
+
+            uint32_t result = (uint32_t)hl + r16;
+            assign_flag(cpu, H, (hl & 0x0FFF) + (r16 & 0x0FFF) > 0x0FFF);
+            assign_flag(cpu, C, result > 0xFFFF);
+            assign_flag(cpu, N, false);
+            cpu->hl = (uint16_t)result;
+            system_tick(cpu->mmu);
         }
         break;
 
     case 2:
         if (q == 0) {
             // LD [r16mem], A (BC, DE, HL+, HL-)
+            uint16_t r16mem = read_reg16_mem(cpu, p);
+            bus_write(cpu->mmu, r16mem, cpu->a, true);
         } else {
             // LD A, [r16mem] (BC, DE, HL+, HL-)
+            uint16_t r16mem = read_reg16_mem(cpu, p);
+            uint8_t src = bus_read(cpu->mmu, r16mem, true);
+            cpu->a = src;
         }
         break;
 
     case 3:
         if (q == 0) {
             // INC r16[p]
+            uint16_t r16 = read_reg16(cpu, p);
+            write_reg16(cpu, r16 + 1, p);
+            system_tick(cpu->mmu);
         } else {
             // DEC r16[p]
+            uint16_t r16 = read_reg16(cpu, p);
+            write_reg16(cpu, r16 - 1, p);
+            system_tick(cpu->mmu);
         }
         break;
 
-    case 4:
+    case 4: {
         // INC r8[y]
+        uint8_t r8 = read_reg8(cpu, y);
+        uint8_t result = r8 + 1;
+        write_reg8(cpu, result, y);
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, (r8 & 0x0F) + 1 > 0x0F);
         break;
+    }
 
-    case 5:
+    case 5: {
         // DEC r8[y]
+        uint8_t r8 = read_reg8(cpu, y);
+        uint8_t result = r8 - 1;
+        write_reg8(cpu, result, y);
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, true);
+        assign_flag(cpu, H, (r8 & 0x0F) < 1);
         break;
+    }
 
-    case 6:
+    case 6: {
         // LD r8[y], imm8
+        uint8_t imm8 = bus_read(cpu->mmu, cpu->pc++, true);
+        write_reg8(cpu, imm8, y);
         break;
+    }
 
     case 7:
         // Accumulator / Flag Operations
         switch (y) {
-        case 0:
+        case 0: {
             // RLCA
+            bool b7 = cpu->a >= 128;
+            uint8_t res = cpu->a;
+            res = res << 1;
+            if (b7) {
+                res++;
+            }
+            cpu->a = res;
+            assign_flag(cpu, Z, false);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b7);
             break;
-        case 1:
+        }
+        case 1: {
             // RRCA
+            bool b0 = (cpu->a % 2) == 1;
+            uint8_t res = cpu->a;
+            res = res >> 1;
+            if (b0) {
+                res += 128;
+            }
+            cpu->a = res;
+            assign_flag(cpu, Z, false);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b0);
             break;
-        case 2:
+        }
+        case 2: {
             // RLA
+            bool b7 = cpu->a >= 128;
+            uint8_t res = cpu->a;
+            res = res << 1;
+            if (get_flag(cpu, C)) {
+                res++;
+            }
+            cpu->a = res;
+            assign_flag(cpu, Z, false);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b7);
             break;
+        }
         case 3:
             // RRA
+            bool b0 = (cpu->a % 2) == 1;
+            uint8_t res = cpu->a;
+            res = res >> 1;
+            if (get_flag(cpu, C)) {
+                res += 128;
+            }
+            cpu->a = res;
+            assign_flag(cpu, Z, false);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b0);
             break;
-        case 4:
+        case 4: {
             // DAA
+            uint8_t correction = 0;
+            bool set_carry = false;
+
+            // Check if lower nibble needs adjustment (+6 or -6)
+            if (get_flag(cpu, H) || (!get_flag(cpu, N) && (cpu->a & 0x0F) > 0x09)) {
+                correction |= 0x06;
+            }
+
+            // Check if upper nibble needs adjustment (+60 or -60)
+            if (get_flag(cpu, C) || (!get_flag(cpu, N) && cpu->a > 0x99)) {
+                correction |= 0x60;
+                set_carry = true; // Carry will be set if upper nibble overflows
+            }
+
+            if (get_flag(cpu, N)) {
+                cpu->a -= correction;
+            } else {
+                cpu->a += correction;
+            }
+
+            assign_flag(cpu, Z, cpu->a == 0);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, set_carry);
             break;
+        }
         case 5:
             // CPL
+            cpu->a = ~cpu->a;
+            assign_flag(cpu, N, true);
+            assign_flag(cpu, H, true);
             break;
         case 6:
             // SCF
+            assign_flag(cpu, C, true);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
             break;
         case 7:
             // CCF
+            assign_flag(cpu, C, (cpu->f & C) == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
             break;
         }
         break;
