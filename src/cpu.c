@@ -220,6 +220,7 @@ static uint16_t read_reg16(CPU* cpu, uint8_t index)
     case 3:
         return cpu->sp;
     }
+    return 0xFFFF;
 }
 static void write_reg16(CPU* cpu, uint16_t value, uint8_t index)
 {
@@ -254,6 +255,38 @@ static uint16_t read_reg16_mem(CPU* cpu, uint8_t index)
     return 0xFFFF; // should never reach here
 }
 
+static uint16_t read_reg16_stk(CPU* cpu, uint8_t index)
+{
+    switch (index) {
+    case 0:
+        return cpu->bc;
+    case 1:
+        return cpu->de;
+    case 2:
+        return cpu->hl;
+    case 3:
+        return cpu->af;
+    }
+    return 0xFFFF;
+}
+static void write_reg16_stk(CPU* cpu, uint16_t value, uint8_t index)
+{
+    switch (index) {
+    case 0:
+        cpu->bc = value;
+        break;
+    case 1:
+        cpu->de = value;
+        break;
+    case 2:
+        cpu->hl = value;
+        break;
+    case 3:
+        cpu->af = value;
+        break;
+    }
+}
+
 static bool get_flag(CPU* cpu, uint8_t flag)
 {
     return (cpu->f & flag) != 0;
@@ -281,6 +314,90 @@ static bool check_condition(CPU* cpu, uint8_t cond)
         return (cpu->f & C); // C  (Carry)
     }
     return false;
+}
+
+static void execute_alu_operation(CPU* cpu, uint8_t operation, uint8_t operand)
+{
+    switch (operation) {
+    case ADD: {
+        uint16_t result = cpu->a + operand;
+        assign_flag(cpu, Z, (result & 0xFF) == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, ((cpu->a & 0x0F) + (operand & 0x0F)) > 0x0F); // is there a carry for the 5th bit
+        assign_flag(cpu, C, result > 0xFF);
+        cpu->a = result & 0xFF;
+        break;
+    }
+    case ADC: {
+        int c = (cpu->f & C) >> 4;
+        int a = cpu->a;
+        int op = operand;
+        int result = a + op + c;
+        assign_flag(cpu, Z, (result & 0xFF) == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, (a & 0x0F) + (op & 0x0F) + c > 0x0F); // is there a carry for the 5th bit
+        assign_flag(cpu, C, result > 0xFF);
+        cpu->a = (uint8_t)(result & 0xFF);
+        break;
+    }
+    case SUB: {
+        uint8_t result = cpu->a - operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, true);
+        assign_flag(cpu, H, (cpu->a & 0x0F) < (operand & 0x0F)); // is there a carry for the 5th bit
+        assign_flag(cpu, C, cpu->a < operand);
+        cpu->a = result;
+        break;
+    }
+    case SBC: {
+        int c = (cpu->f & C) >> 4;
+        int a = cpu->a;
+        int op = operand;
+        int result = a - op - c;
+        assign_flag(cpu, Z, (result & 0xFF) == 0);
+        assign_flag(cpu, N, true);
+        assign_flag(cpu, H, (a & 0x0F) - (op & 0x0F) - c < 0); // is there a carry for the 5th bit
+        assign_flag(cpu, C, result < 0);
+        cpu->a = (uint8_t)(result & 0xFF);
+        break;
+    }
+    case AND: {
+        uint8_t result = cpu->a & operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, true);
+        assign_flag(cpu, C, false);
+        cpu->a = result;
+        break;
+    }
+    case XOR: {
+        uint8_t result = cpu->a ^ operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, false);
+        assign_flag(cpu, C, false);
+        cpu->a = result;
+        break;
+    }
+    case OR: {
+        uint8_t result = cpu->a | operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, false);
+        assign_flag(cpu, C, false);
+        cpu->a = result;
+        break;
+    }
+    case CP: {
+        // same as SUB but only updates flags
+        uint8_t result = cpu->a - operand;
+        assign_flag(cpu, Z, result == 0);
+        assign_flag(cpu, N, true);
+        assign_flag(cpu, H, (cpu->a & 0x0F) < (operand & 0x0F)); // is there a carry for the 5th bit
+        assign_flag(cpu, C, cpu->a < operand);
+        break;
+    }
+    }
 }
 
 static void execute_block_0(CPU* cpu)
@@ -538,88 +655,106 @@ static void execute_block_1(CPU* cpu)
 
 static void execute_block_2(CPU* cpu)
 {
+    // Register alu operations
     uint8_t operand_reg = (cpu->ir & 0x07); // bits 0, 1, 2
     uint8_t operand = read_reg8(cpu, operand_reg);
     uint8_t operation = (cpu->ir >> 3) & 0x07; // bits 3, 4, 5
-    switch (operation) {
-    case ADD: {
-        uint16_t result = cpu->a + operand;
-        assign_flag(cpu, Z, (result & 0xFF) == 0);
-        assign_flag(cpu, N, false);
-        assign_flag(cpu, H, ((cpu->a & 0x0F) + (operand & 0x0F)) > 0x0F); // is there a carry for the 5th bit
-        assign_flag(cpu, C, result > 0xFF);
-        cpu->a = result & 0xFF;
-        break;
-    }
-    case ADC: {
-        int c = (cpu->f & C) >> 4;
-        int a = cpu->a;
-        int op = operand;
-        int result = a + op + c;
-        assign_flag(cpu, Z, (result & 0xFF) == 0);
-        assign_flag(cpu, N, false);
-        assign_flag(cpu, H, (a & 0x0F) + (op & 0x0F) + c > 0x0F); // is there a carry for the 5th bit
-        assign_flag(cpu, C, result > 0xFF);
-        cpu->a = (uint8_t)(result & 0xFF);
-        break;
-    }
-    case SUB: {
-        uint8_t result = cpu->a - operand;
-        assign_flag(cpu, Z, result == 0);
-        assign_flag(cpu, N, true);
-        assign_flag(cpu, H, (cpu->a & 0x0F) < (operand & 0x0F)); // is there a carry for the 5th bit
-        assign_flag(cpu, C, cpu->a < operand);
-        cpu->a = result;
-        break;
-    }
-    case SBC: {
-        int c = (cpu->f & C) >> 4;
-        int a = cpu->a;
-        int op = operand;
-        int result = a - op - c;
-        assign_flag(cpu, Z, (result & 0xFF) == 0);
-        assign_flag(cpu, N, true);
-        assign_flag(cpu, H, (a & 0x0F) - (op & 0x0F) - c < 0); // is there a carry for the 5th bit
-        assign_flag(cpu, C, result < 0);
-        cpu->a = (uint8_t)(result & 0xFF);
-        break;
-    }
-    case AND: {
-        uint8_t result = cpu->a & operand;
-        assign_flag(cpu, Z, result == 0);
-        assign_flag(cpu, N, false);
-        assign_flag(cpu, H, true);
-        assign_flag(cpu, C, false);
-        cpu->a = result;
-        break;
-    }
-    case XOR: {
-        uint8_t result = cpu->a ^ operand;
-        assign_flag(cpu, Z, result == 0);
-        assign_flag(cpu, N, false);
-        assign_flag(cpu, H, false);
-        assign_flag(cpu, C, false);
-        cpu->a = result;
-        break;
-    }
-    case OR: {
-        uint8_t result = cpu->a | operand;
-        assign_flag(cpu, Z, result == 0);
-        assign_flag(cpu, N, false);
-        assign_flag(cpu, H, false);
-        assign_flag(cpu, C, false);
-        cpu->a = result;
-        break;
-    }
-    case CP: {
-        // same as SUB but only updates flags
-        uint8_t result = cpu->a - operand;
-        assign_flag(cpu, Z, result == 0);
-        assign_flag(cpu, N, true);
-        assign_flag(cpu, H, (cpu->a & 0x0F) < (operand & 0x0F)); // is there a carry for the 5th bit
-        assign_flag(cpu, C, cpu->a < operand);
-        break;
-    }
-    }
+    execute_alu_operation(cpu, operation, operand);
     cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
+}
+
+static void execute_block_3(CPU* cpu)
+{
+    uint8_t z = cpu->ir & 0x07; // Bits 0, 1, 2
+    uint8_t y = (cpu->ir >> 3) & 0x07; // Bits 3, 4, 5
+    uint8_t p = y >> 1; // 16-bit register index
+    uint8_t q = y & 1; // Bit 3
+
+    switch (z) {
+    case 0:
+        // Conditional Returns and Misc Memory
+        if (y < 4) {
+            // RET cond (y = 0:NZ, 1:Z, 2:NC, 3:C)
+        } else {
+            // y = 4: LDH [a8], A    (LD [0xFF00 + a8], A)
+            // y = 5: ADD SP, r8     (r8 is signed!)
+            // y = 6: LDH A, [a8]    (LD A, [0xFF00 + a8])
+            // y = 7: LD HL, SP+r8   (r8 is signed!)
+        }
+        break;
+
+    case 1:
+        // POP and Misc Jumps/Returns
+        if (q == 0) {
+            // POP r16[p] (p = 0:BC, 1:DE, 2:HL, 3:AF)
+        } else {
+            switch (p) {
+            case 0: // RET
+            case 1: // RETI (Return and enable interrupts)
+            case 2: // JP HL
+            case 3: // LD SP, HL
+                break;
+            }
+        }
+        break;
+
+    case 2:
+        // Conditional Jumps and High RAM (C register)
+        if (y < 4) {
+            // JP cond, a16 (y = 0:NZ, 1:Z, 2:NC, 3:C)
+        } else {
+            // y = 4: LD [C], A      (LD [0xFF00 + C], A)
+            // y = 5: LD [a16], A
+            // y = 6: LD A, [C]      (LD A, [0xFF00 + C])
+            // y = 7: LD A, [a16]
+        }
+        break;
+
+    case 3:
+        // Unconditional Jumps and Interrupts
+        switch (y) {
+        case 0: // JP a16
+        case 1: // PREFIX CB (Switch to CB opcode table!)
+        case 6: // DI (Disable Interrupts)
+        case 7: // EI (Enable Interrupts)
+            break;
+        default:
+            // y = 2, 3, 4, 5 are ILLEGAL opcodes on the Game Boy
+            break;
+        }
+        break;
+
+    case 4:
+        // Conditional Calls
+        if (y < 4) {
+            // CALL cond, a16 (y = 0:NZ, 1:Z, 2:NC, 3:C)
+        } else {
+            // ILLEGAL opcodes
+        }
+        break;
+
+    case 5:
+        // PUSH and Unconditional Call
+        if (q == 0) {
+            // PUSH r16[p] (p = 0:BC, 1:DE, 2:HL, 3:AF)
+        } else if (p == 0) {
+            // CALL a16
+        } else {
+            // ILLEGAL opcodes
+        }
+        break;
+
+    case 6: {
+        // ALU immediate operations
+        // y exactly matches the ALU operations from Group 2!
+        uint8_t imm8 = bus_read(cpu->mmu, cpu->pc++, true);
+        execute_alu_operation(cpu, y, imm8);
+        break;
+    }
+
+    case 7:
+        // RST (Restart / Software Interrupts)
+        // Call to address: y * 8  (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38)
+        break;
+    }
 }
