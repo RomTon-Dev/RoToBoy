@@ -1,7 +1,6 @@
 #include "cpu.h"
 #include "mmu.h"
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 #define ADD 0
 #define ADC 1
@@ -79,6 +78,12 @@ static bool get_flag(CPU* cpu, uint8_t flag);
 
 void cpu_step(CPU* cpu)
 {
+    if (cpu->ime_delay > 0) {
+        cpu->ime_delay--;
+        if (cpu->ime_delay == 0) {
+            cpu->master_interrupt_enable = true;
+        }
+    }
     handle_interrupts(cpu);
     // rememer IR already containes the correct opcode fetched in previous execution
     if (cpu->ir == 0xCB) {
@@ -672,27 +677,100 @@ static void execute_block_3(CPU* cpu)
 
     switch (z) {
     case 0:
-        // Conditional Returns and Misc Memory
         if (y < 4) {
             // RET cond (y = 0:NZ, 1:Z, 2:NC, 3:C)
+            bool cond = check_condition(cpu, y);
+            system_tick(cpu->mmu);
+            if (cond) {
+                uint8_t stack_lsb = bus_read(cpu->mmu, cpu->sp++, true);
+                uint8_t stack_msb = bus_read(cpu->mmu, cpu->sp++, true);
+                cpu->pc = (stack_msb << 8) | stack_lsb;
+                system_tick(cpu->mmu);
+            }
         } else {
-            // y = 4: LDH [a8], A    (LD [0xFF00 + a8], A)
-            // y = 5: ADD SP, r8     (r8 is signed!)
-            // y = 6: LDH A, [a8]    (LD A, [0xFF00 + a8])
-            // y = 7: LD HL, SP+r8   (r8 is signed!)
+            switch (y) {
+            case 4: {
+                // LDH [imm8], a
+                uint8_t imm8 = bus_read(cpu->mmu, cpu->pc++, true);
+                uint16_t write_addr = 0xFF00 | imm8;
+                bus_write(cpu->mmu, write_addr, cpu->a, true);
+                break;
+            }
+            case 5: {
+                // ADD SP, imm8
+                int8_t offset = (int8_t)bus_read(cpu->mmu, cpu->pc++, true);
+                uint8_t sp_lsb = cpu->sp & 0xFF;
+                uint8_t offset_u8 = (uint8_t)offset;
+
+                assign_flag(cpu, Z, false);
+                assign_flag(cpu, N, false);
+                assign_flag(cpu, H, (sp_lsb & 0x0F) + (offset_u8 & 0x0F) > 0x0F);
+                assign_flag(cpu, C, (int)sp_lsb + (int)offset_u8 > 0xFF);
+
+                system_tick(cpu->mmu);
+                cpu->sp = cpu->sp + offset;
+                system_tick(cpu->mmu);
+                break;
+            }
+            case 6: {
+                // LDH A, [imm8]
+                uint8_t imm8 = bus_read(cpu->mmu, cpu->pc++, true);
+                uint16_t read_addr = 0xFF00 | imm8;
+                imm8 = bus_read(cpu->mmu, read_addr, true);
+                cpu->a = imm8;
+                break;
+            }
+            case 7: {
+                // LD HL, SP+imm8
+                int8_t offset = (int8_t)bus_read(cpu->mmu, cpu->pc++, true);
+                uint8_t sp_lsb = cpu->sp & 0xFF;
+                uint8_t offset_u8 = (uint8_t)offset;
+
+                assign_flag(cpu, Z, false);
+                assign_flag(cpu, N, false);
+                assign_flag(cpu, H, (sp_lsb & 0x0F) + (offset_u8 & 0x0F) > 0x0F);
+                assign_flag(cpu, C, (int)sp_lsb + (int)offset_u8 > 0xFF);
+                system_tick(cpu->mmu);
+
+                cpu->hl = cpu->sp + offset;
+                break;
+            }
+            }
         }
         break;
 
     case 1:
-        // POP and Misc Jumps/Returns
         if (q == 0) {
             // POP r16[p] (p = 0:BC, 1:DE, 2:HL, 3:AF)
+            uint8_t stack_lsb = bus_read(cpu->mmu, cpu->sp++, true);
+            uint8_t stack_msb = bus_read(cpu->mmu, cpu->sp++, true);
+            write_reg16_stk(cpu, (stack_msb << 8) | stack_lsb, p);
         } else {
             switch (p) {
-            case 0: // RET
-            case 1: // RETI (Return and enable interrupts)
-            case 2: // JP HL
+            case 0: {
+                // RET
+                uint8_t stack_lsb = bus_read(cpu->mmu, cpu->sp++, true);
+                uint8_t stack_msb = bus_read(cpu->mmu, cpu->sp++, true);
+                cpu->pc = (stack_msb << 8) | stack_lsb;
+                system_tick(cpu->mmu);
+                break;
+            }
+            case 1: {
+                // RETI
+                uint8_t stack_lsb = bus_read(cpu->mmu, cpu->sp++, true);
+                uint8_t stack_msb = bus_read(cpu->mmu, cpu->sp++, true);
+                cpu->pc = (stack_msb << 8) | stack_lsb;
+                cpu->master_interrupt_enable = true;
+                system_tick(cpu->mmu);
+                break;
+            }
+            case 2:
+                // JP HL
+                cpu->pc = cpu->hl;
+                break;
             case 3: // LD SP, HL
+                cpu->sp = cpu->hl;
+                system_tick(cpu->mmu);
                 break;
             }
         }
@@ -701,44 +779,104 @@ static void execute_block_3(CPU* cpu)
     case 2:
         // Conditional Jumps and High RAM (C register)
         if (y < 4) {
-            // JP cond, a16 (y = 0:NZ, 1:Z, 2:NC, 3:C)
+            // JP cond, imm16 (y = 0:NZ, 1:Z, 2:NC, 3:C)
+            uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+            bool cond = check_condition(cpu, y);
+            if (cond) {
+                cpu->pc = (imm_msb << 8) | imm_lsb;
+                system_tick(cpu->mmu);
+            }
         } else {
-            // y = 4: LD [C], A      (LD [0xFF00 + C], A)
-            // y = 5: LD [a16], A
-            // y = 6: LD A, [C]      (LD A, [0xFF00 + C])
-            // y = 7: LD A, [a16]
+            switch (y) {
+            case 4:
+                // LDH [C], A
+                bus_write(cpu->mmu, (0xFF00 | cpu->c), cpu->a, true);
+                break;
+            case 5: {
+                // LD [imm16], A
+                uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+                uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+                bus_write(cpu->mmu, (imm_msb << 8) | imm_lsb, cpu->a, true);
+                break;
+            }
+            case 6: {
+                // LDH A, [C]
+                uint8_t src = bus_read(cpu->mmu, (0xFF00 | cpu->c), true);
+                cpu->a = src;
+                break;
+            }
+            case 7: {
+                // LD A, [imm16]
+                uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+                uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+                cpu->a = bus_read(cpu->mmu, (imm_msb << 8) | imm_lsb, true);
+                break;
+            }
+            }
         }
         break;
 
     case 3:
         // Unconditional Jumps and Interrupts
         switch (y) {
-        case 0: // JP a16
-        case 1: // PREFIX CB (Switch to CB opcode table!)
-        case 6: // DI (Disable Interrupts)
+        case 0: {
+            // JP imm16
+            uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+            cpu->pc = (imm_msb << 8) | imm_lsb;
+            system_tick(cpu->mmu);
+            break;
+        }
+        case 6:
+            // DI (Disable Interrupts)
+            cpu->master_interrupt_enable = false;
+            cpu->ime_delay = 0; // cancel effect of ei
+            break;
+
         case 7: // EI (Enable Interrupts)
+            cpu->ime_delay = 2;
             break;
         default:
-            // y = 2, 3, 4, 5 are ILLEGAL opcodes on the Game Boy
+            // ILLEGAL opcodes
             break;
         }
         break;
 
     case 4:
-        // Conditional Calls
         if (y < 4) {
-            // CALL cond, a16 (y = 0:NZ, 1:Z, 2:NC, 3:C)
+            // CALL cond, imm16 (y = 0:NZ, 1:Z, 2:NC, 3:C)
+            uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+            if (check_condition(cpu, y)) {
+                cpu->sp--;
+                system_tick(cpu->mmu);
+                bus_write(cpu->mmu, cpu->sp--, (cpu->pc & 0xFF00) >> 8, true);
+                bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0x00FF), true);
+                cpu->pc = (imm_msb << 8) | imm_lsb;
+            }
         } else {
             // ILLEGAL opcodes
         }
         break;
 
     case 5:
-        // PUSH and Unconditional Call
         if (q == 0) {
             // PUSH r16[p] (p = 0:BC, 1:DE, 2:HL, 3:AF)
+            cpu->sp--;
+            system_tick(cpu->mmu);
+            uint16_t r16 = read_reg16_stk(cpu, p);
+            bus_write(cpu->mmu, cpu->sp--, (r16 & 0xFF00) >> 8, true);
+            bus_write(cpu->mmu, cpu->sp, (r16 & 0x00FF), true);
         } else if (p == 0) {
-            // CALL a16
+            // CALL imm16
+            uint8_t imm_lsb = bus_read(cpu->mmu, cpu->pc++, true);
+            uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
+            cpu->sp--;
+            system_tick(cpu->mmu);
+            bus_write(cpu->mmu, cpu->sp--, (cpu->pc & 0xFF00) >> 8, true);
+            bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0x00FF), true);
+            cpu->pc = (imm_msb << 8) | imm_lsb;
         } else {
             // ILLEGAL opcodes
         }
@@ -746,15 +884,18 @@ static void execute_block_3(CPU* cpu)
 
     case 6: {
         // ALU immediate operations
-        // y exactly matches the ALU operations from Group 2!
         uint8_t imm8 = bus_read(cpu->mmu, cpu->pc++, true);
         execute_alu_operation(cpu, y, imm8);
         break;
     }
 
     case 7:
-        // RST (Restart / Software Interrupts)
-        // Call to address: y * 8  (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38)
+        // RST
+        cpu->sp--;
+        system_tick(cpu->mmu);
+        bus_write(cpu->mmu, cpu->sp--, (cpu->pc & 0xFF00) >> 8, true);
+        bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0x00FF), true);
+        cpu->pc = y * 8;
         break;
     }
 }
