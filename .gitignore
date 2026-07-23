@@ -3,6 +3,7 @@ CMakeFiles
 roms
 saves
 .cache
+.venv
 build.sh
 **/Makefile
 !/Makefile
@@ -11,6 +12,7 @@ bootrom/bin
 bootrom/obj
 build
 *.exe
+*.json
 compile_commands.json
 tests/test_data/*.so
 __pycache__
