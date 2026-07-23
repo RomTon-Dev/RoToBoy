@@ -311,3 +311,13 @@ void cartridge_free(Cartridge* cart)
     free(cart->rom_data);
     free(cart->eram_data);
 }
+
+void cartridge_write(Cartridge* cart, uint16_t address, uint8_t value)
+{
+    return;
+}
+
+uint8_t cartridge_read(Cartridge* cart, uint16_t address)
+{
+    return 0xFF;
+}
