@@ -14,12 +14,17 @@ class Cartridge(ctypes.Structure):
     _fields_ = [
         ("rom_data", ctypes.POINTER(ctypes.c_uint8)),
         ("rom_size", ctypes.c_uint32),
+        ("current_rom_bank", ctypes.c_uint8),
+        ("total_rom_banks", ctypes.c_uint8),
         ("eram_data", ctypes.POINTER(ctypes.c_uint8)),
         ("eram_size", ctypes.c_uint32),
-        ("mbc_type", ctypes.c_uint8),
-        ("current_rom_bank", ctypes.c_uint8),
         ("current_ram_bank", ctypes.c_uint8),
-        ("ram_enabled", ctypes.c_bool),
+        ("total_ram_banks", ctypes.c_uint8),
+        ("eram_enabled", ctypes.c_bool),
+        # In C, standard enums default to the size of an int (4 bytes).
+        ("mbc_type", ctypes.c_int),
+        ("has_battery", ctypes.c_bool),
+        ("has_rtc", ctypes.c_bool),
     ]
 
 
