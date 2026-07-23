@@ -46,6 +46,7 @@ typedef struct {
 
     // Internal CPU State
     bool master_interrupt_enable; // IME flag (controlled by EI and DI instructions)
+    uint8_t ime_delay; // used for ei, which takes an M-cycle to take effect
     bool halted; // CPU enters low-power halt state
     bool stopped; // CPU enters very low-power stop state
 
