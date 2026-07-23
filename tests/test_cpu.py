@@ -213,8 +213,6 @@ def test_cpu_instruction(test_case):
     cpu.ir = lib.bus_read(ctypes.byref(mmu), cpu.pc, False)
     cpu.pc += 1  # Pipeline increments PC upon prefetch
 
-    # 4. NOW step the CPU
-    lib.cpu_step(ctypes.byref(cpu))
     # --- EXECUTE INSTRUCTION ---
 
     lib.cpu_step(ctypes.byref(cpu))
