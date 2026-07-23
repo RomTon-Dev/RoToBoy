@@ -152,7 +152,7 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
     }
 
     // Now that we have the cartridge data, we need the rom and ram sizes
-    cart->rom_size = 32 * (1 << 10) * (1 << cart->rom_data[0x0148]);
+    cart->rom_size = 32 * (0x4000) * (1 << cart->rom_data[0x0148]);
     cart->total_rom_banks = 2 << cart->rom_data[0x0148];
 
     if (cart->eram_enabled) {
@@ -310,4 +310,35 @@ void cartridge_free(Cartridge* cart)
 {
     free(cart->rom_data);
     free(cart->eram_data);
+}
+
+uint8_t cartridge_read(Cartridge* cart, uint16_t address)
+{
+    if (address <= 0x3FFF) {
+        // this is the fixed bank
+        return cart->rom_data[address];
+    } else if (address >= 0x4000 && address <= 0x7FFF) {
+        // each bank is 16 KiB
+        // map for bank n is (address - 0x4000) + (n - 1) * (16KiB)
+        uint32_t mapped_address = (address - 0x4000) + (cart->current_rom_bank - 1) * (0x4000);
+        if (mapped_address < cart->rom_size) {
+            return cart->rom_data[mapped_address];
+        }
+        return 0xFF;
+    } else if (address >= 0xA000 && address <= 0xBFFF) {
+        // each bank is 8 KiB
+        // bank n is (address - 0xA000) + (n * 8 KiB)
+        if (cart->eram_enabled && cart->eram_data != NULL) {
+            uint32_t mapped_address = (address - 0xA000) + (cart->current_ram_bank * 0x2000);
+            if (mapped_address < cart->eram_size) {
+                return cart->rom_data[mapped_address];
+            }
+        }
+        return 0xFF;
+    }
+    return 0xFF;
+}
+void cartridge_write(Cartridge* cart, uint16_t address, uint8_t value)
+{
+    return;
 }
