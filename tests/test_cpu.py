@@ -78,11 +78,12 @@ class CPU(ctypes.Structure):
         ("_u_hl", _HL_Union),
         ("sp", ctypes.c_uint16),
         ("pc", ctypes.c_uint16),
+        ("ir", ctypes.c_uint8),
         ("master_interrupt_enable", ctypes.c_bool),
+        ("ime_delay", ctypes.c_uint8),
         ("halted", ctypes.c_bool),
         ("stopped", ctypes.c_bool),
         ("mmu", ctypes.POINTER(MMU)),
-        # Add 'ir' or 'halt_bug' here if present in C struct!
     ]
 
 
@@ -126,7 +127,7 @@ def load_json_tests():
 
     # CHANGE THIS: Only load the opcode file you're working on
     # Target 00.json (NOP) or 01.json (LD BC, u16)
-    target_file = os.path.join(base_dir, "test_data", "cpu_test_data", "00.json")
+    target_file = os.path.join(base_dir, "test_data", "cpu_test_data", "01.json")
 
     if not os.path.exists(target_file):
         print(f"\n[WARNING] File not found: {target_file}")
@@ -203,11 +204,20 @@ def test_cpu_instruction(test_case):
     cpu.e = initial["e"]
     cpu.h = initial["h"]
     cpu.l = initial["l"]
-    cpu.pc = initial["pc"]
     cpu.sp = initial["sp"]
 
+    # 3. Setup PC and prime the pipeline IR
+    cpu.pc = initial["pc"]
+
+    # Manually fetch the instruction byte from initial["pc"] into cpu.ir
+    cpu.ir = lib.bus_read(ctypes.byref(mmu), cpu.pc, False)
+    cpu.pc += 1  # Pipeline increments PC upon prefetch
+
+    # 4. NOW step the CPU
+    lib.cpu_step(ctypes.byref(cpu))
     # --- EXECUTE INSTRUCTION ---
-    cycles_taken = lib.cpu_step(ctypes.byref(cpu))
+
+    lib.cpu_step(ctypes.byref(cpu))
 
     # --- ASSERT FINAL STATE ---
     final = test_case["final"]
