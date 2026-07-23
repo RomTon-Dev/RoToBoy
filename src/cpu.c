@@ -15,6 +15,24 @@
 #define H 0x20
 #define C 0x10
 
+static void execute_block_0(CPU* cpu);
+static void execute_block_1(CPU* cpu);
+static void execute_block_2(CPU* cpu);
+static void execute_block_3(CPU* cpu);
+static void execute_cb(CPU* cpu);
+static bool handle_interrupts(CPU* cpu);
+static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address);
+static uint8_t read_reg8(CPU* cpu, uint8_t index);
+static void write_reg8(CPU* cpu, uint8_t value, uint8_t index);
+static uint16_t read_reg16(CPU* cpu, uint8_t index);
+static void write_reg16(CPU* cpu, uint16_t value, uint8_t index);
+static uint16_t read_reg16_mem(CPU* cpu, uint8_t index);
+static uint16_t read_reg16_stk(CPU* cpu, uint8_t index);
+static void write_reg16_stk(CPU* cpu, uint16_t value, uint8_t index);
+static void assign_flag(CPU* cpu, uint8_t flag, bool cond);
+static bool check_condition(CPU* cpu, uint8_t cond);
+static bool get_flag(CPU* cpu, uint8_t flag);
+
 void cpu_init(CPU* cpu, mmu* mmu)
 {
 
@@ -58,24 +76,6 @@ void cpu_init(CPU* cpu, mmu* mmu)
     }
 }
 
-static void execute_block_0(CPU* cpu);
-static void execute_block_1(CPU* cpu);
-static void execute_block_2(CPU* cpu);
-static void execute_block_3(CPU* cpu);
-static void execute_cb(CPU* cpu);
-static void handle_interrupts(CPU* cpu);
-static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address);
-static uint8_t read_reg8(CPU* cpu, uint8_t index);
-static void write_reg8(CPU* cpu, uint8_t value, uint8_t index);
-static uint16_t read_reg16(CPU* cpu, uint8_t index);
-static void write_reg16(CPU* cpu, uint16_t value, uint8_t index);
-static uint16_t read_reg16_mem(CPU* cpu, uint8_t index);
-static uint16_t read_reg16_stk(CPU* cpu, uint8_t index);
-static void write_reg16_stk(CPU* cpu, uint16_t value, uint8_t index);
-static void assign_flag(CPU* cpu, uint8_t flag, bool cond);
-static bool check_condition(CPU* cpu, uint8_t cond);
-static bool get_flag(CPU* cpu, uint8_t flag);
-
 void cpu_step(CPU* cpu)
 {
     if (cpu->ime_delay > 0) {
@@ -84,7 +84,15 @@ void cpu_step(CPU* cpu)
             cpu->master_interrupt_enable = true;
         }
     }
-    handle_interrupts(cpu);
+    if (handle_interrupts(cpu)) {
+        return;
+    }
+
+    if (cpu->halted) {
+        system_tick(cpu->mmu);
+        return;
+    }
+
     // rememer IR already containes the correct opcode fetched in previous execution
     if (cpu->ir == 0xCB) {
         cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
@@ -108,46 +116,34 @@ void cpu_step(CPU* cpu)
     }
 }
 
-static void handle_interrupts(CPU* cpu)
+static bool handle_interrupts(CPU* cpu)
 {
-    uint8_t pending_interrputs = cpu->mmu->if_register & cpu->mmu->ie_register;
+    uint8_t pending_interrputs = cpu->mmu->if_register & cpu->mmu->ie_register & 0x1F;
     if (pending_interrputs != 0) {
         cpu->halted = false; // wake up cpu
 
         if (!cpu->master_interrupt_enable) {
-            return;
+            return false;
         }
 
         uint16_t jump_address = 0x0040; // VBlank interrupt handler address
         uint16_t return_address = cpu->pc - 1;
         uint8_t mask = 1;
+        static const uint16_t isr_vectors[5] = { 0x0040, 0x0048, 0x0050, 0x0058, 0x0060 };
         for (int i = 0; i < 5; i++) {
             if ((pending_interrputs & mask) != 0) {
                 // reset IME and IR bit
                 cpu->master_interrupt_enable = false;
                 cpu->mmu->if_register &= ~mask;
-                perform_isr(cpu, jump_address, return_address);
-                break;
+                perform_isr(cpu, isr_vectors[i], return_address);
+                return true;
             }
 
             mask = mask << 1;
-
-            switch (i) {
-            case 0: // LCD
-                jump_address = 0x0048;
-                break;
-            case 1: // Timer
-                jump_address = 0x0050;
-                break;
-            case 2: // Serial
-                jump_address = 0x0058;
-                break;
-            case 3: // Joypad
-                jump_address = 0x0060;
-                break;
-            }
         }
+        return false;
     }
+    return false;
 }
 
 static void perform_isr(CPU* cpu, uint16_t jump_address, uint16_t return_address)
@@ -196,20 +192,28 @@ static void write_reg8(CPU* cpu, uint8_t value, uint8_t index)
     switch (index) {
     case 0:
         cpu->b = value;
+        break;
     case 1:
         cpu->c = value;
+        break;
     case 2:
         cpu->d = value;
+        break;
     case 3:
         cpu->e = value;
+        break;
     case 4:
         cpu->h = value;
+        break;
     case 5:
         cpu->l = value;
+        break;
     case 6:
         bus_write(cpu->mmu, cpu->hl, value, true); // [HL]
+        break;
     case 7:
         cpu->a = value;
+        break;
     }
 }
 
@@ -287,7 +291,7 @@ static void write_reg16_stk(CPU* cpu, uint16_t value, uint8_t index)
         cpu->hl = value;
         break;
     case 3:
-        cpu->af = value;
+        cpu->af = value & 0xFFF0; // bottom nibble hardwaried to 0
         break;
     }
 }
@@ -430,6 +434,7 @@ static void execute_block_0(CPU* cpu)
         case 2:
             // STOP
             cpu->stopped = true;
+            cpu->pc++; // stop is a 2 byte instruction
             break;
         case 3: {
             // JR imm8 (Unconditional)
@@ -851,7 +856,8 @@ static void execute_block_3(CPU* cpu)
             if (check_condition(cpu, y)) {
                 cpu->sp--;
                 system_tick(cpu->mmu);
-                bus_write(cpu->mmu, cpu->sp--, (cpu->pc & 0xFF00) >> 8, true);
+                bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0xFF00) >> 8, true);
+                cpu->sp--;
                 bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0x00FF), true);
                 cpu->pc = (imm_msb << 8) | imm_lsb;
             }
@@ -866,7 +872,8 @@ static void execute_block_3(CPU* cpu)
             cpu->sp--;
             system_tick(cpu->mmu);
             uint16_t r16 = read_reg16_stk(cpu, p);
-            bus_write(cpu->mmu, cpu->sp--, (r16 & 0xFF00) >> 8, true);
+            bus_write(cpu->mmu, cpu->sp, (r16 & 0xFF00) >> 8, true);
+            cpu->sp--;
             bus_write(cpu->mmu, cpu->sp, (r16 & 0x00FF), true);
         } else if (p == 0) {
             // CALL imm16
@@ -874,7 +881,8 @@ static void execute_block_3(CPU* cpu)
             uint8_t imm_msb = bus_read(cpu->mmu, cpu->pc++, true);
             cpu->sp--;
             system_tick(cpu->mmu);
-            bus_write(cpu->mmu, cpu->sp--, (cpu->pc & 0xFF00) >> 8, true);
+            bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0xFF00) >> 8, true);
+            cpu->sp--;
             bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0x00FF), true);
             cpu->pc = (imm_msb << 8) | imm_lsb;
         } else {
@@ -893,9 +901,165 @@ static void execute_block_3(CPU* cpu)
         // RST
         cpu->sp--;
         system_tick(cpu->mmu);
-        bus_write(cpu->mmu, cpu->sp--, (cpu->pc & 0xFF00) >> 8, true);
+        bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0xFF00) >> 8, true);
+        cpu->sp--;
         bus_write(cpu->mmu, cpu->sp, (cpu->pc & 0x00FF), true);
         cpu->pc = y * 8;
         break;
     }
+    cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
+}
+
+static void execute_cb(CPU* cpu)
+{
+    uint8_t z = cpu->ir & 0x07; // Bits 0, 1, 2 (r8)
+    uint8_t y = (cpu->ir >> 3) & 0x07; // Bits 3, 4, 5 (b3)
+    uint8_t x = (cpu->ir >> 6) & 0x03; // bits 6, 7
+
+    switch (x) {
+    case 0:
+        // bit shifts
+        switch (y) {
+        case 0: {
+            // rlc r8[z]
+            uint8_t r8 = read_reg8(cpu, z);
+            bool b7 = r8 >= 128;
+            uint8_t res = r8;
+            res = res << 1;
+            if (b7) {
+                res++;
+            }
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b7);
+            break;
+        }
+        case 1: {
+            // rrc r8
+            uint8_t r8 = read_reg8(cpu, z);
+            bool b0 = (r8 % 2) == 1;
+            uint8_t res = r8;
+            res = res >> 1;
+            if (b0) {
+                res += 128;
+            }
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b0);
+            break;
+        }
+        case 2: {
+            // rl r8
+            uint8_t r8 = read_reg8(cpu, z);
+            bool b7 = r8 >= 128;
+            uint8_t res = r8;
+            res = res << 1;
+            if (get_flag(cpu, C)) {
+                res++;
+            }
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b7);
+            break;
+        }
+        case 3: {
+            // rr r8
+            uint8_t r8 = read_reg8(cpu, z);
+            bool b0 = (r8 % 2) == 1;
+            uint8_t res = r8;
+            res = res >> 1;
+            if (get_flag(cpu, C)) {
+                res += 128;
+            }
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b0);
+            break;
+        }
+        case 4: {
+            // sla r8
+            uint8_t r8 = read_reg8(cpu, z);
+            bool b7 = r8 >= 128;
+            uint8_t res = r8;
+            res = res << 1;
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b7);
+            break;
+        }
+        case 5: {
+            // sra r8
+            uint8_t r8 = read_reg8(cpu, z);
+            bool b0 = (r8 % 2) == 1;
+            uint8_t res = (r8 >> 1) | (r8 & 0x80); // keep bit 7
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b0);
+            break;
+        }
+        case 6: {
+            // swap r8
+            uint8_t r8 = read_reg8(cpu, z);
+            uint8_t lower_nibble = r8 & 0x0F;
+            uint8_t upper_nibble = (r8 >> 4) & 0x0F;
+            uint8_t res = (lower_nibble << 4) | upper_nibble;
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, false);
+            break;
+        }
+        case 7: {
+            // srl r8
+            uint8_t r8 = read_reg8(cpu, z);
+            bool b0 = (r8 % 2) == 1;
+            uint8_t res = r8;
+            res = res >> 1;
+            write_reg8(cpu, res, z);
+            assign_flag(cpu, Z, res == 0);
+            assign_flag(cpu, N, false);
+            assign_flag(cpu, H, false);
+            assign_flag(cpu, C, b0);
+            break;
+        }
+        }
+        break;
+    case 1: {
+        // bit b3[y], r8[z]
+        uint8_t r8 = read_reg8(cpu, z);
+        uint8_t mask = 1 << y;
+        assign_flag(cpu, N, false);
+        assign_flag(cpu, H, true);
+        assign_flag(cpu, Z, (r8 & mask) == 0);
+        break;
+    }
+    case 2: {
+        // res b3, r8
+        uint8_t r8 = read_reg8(cpu, z);
+        uint8_t mask = ~(1 << y);
+        write_reg8(cpu, r8 & mask, z);
+        break;
+    }
+    case 3: {
+        // set b3, r8
+        uint8_t r8 = read_reg8(cpu, z);
+        uint8_t mask = 1 << y;
+        write_reg8(cpu, r8 | mask, z);
+        break;
+    }
+    }
+    cpu->ir = bus_read(cpu->mmu, cpu->pc++, true);
 }
