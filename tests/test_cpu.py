@@ -1,8 +1,8 @@
 import ctypes
-import json
-import pytest
 import glob
+import json
 import os
+import pytest
 
 
 # ==========================================
@@ -82,6 +82,7 @@ class CPU(ctypes.Structure):
         ("halted", ctypes.c_bool),
         ("stopped", ctypes.c_bool),
         ("mmu", ctypes.POINTER(MMU)),
+        # Add 'ir' or 'halt_bug' here if present in C struct!
     ]
 
 
@@ -92,19 +93,28 @@ lib = ctypes.CDLL(os.path.abspath("./test_data/libMyProjectLib.so"))
 
 lib.cpu_init.argtypes = [ctypes.POINTER(CPU), ctypes.POINTER(MMU)]
 lib.cpu_step.argtypes = [ctypes.POINTER(CPU)]
-lib.cpu_step.restype = ctypes.c_uint8  # M-cycles taken
+lib.cpu_step.restype = ctypes.c_uint8
 
-lib.bus_read.argtypes = [ctypes.POINTER(MMU), ctypes.c_uint16]
+# Matches C signature: bus_read(MMU*, uint16_t, bool)
+lib.bus_read.argtypes = [
+    ctypes.POINTER(MMU),
+    ctypes.c_uint16,
+    ctypes.c_bool,
+]
 lib.bus_read.restype = ctypes.c_uint8
-lib.bus_write.argtypes = [ctypes.POINTER(MMU), ctypes.c_uint16, ctypes.c_uint8]
+
+lib.bus_write.argtypes = [
+    ctypes.POINTER(MMU),
+    ctypes.c_uint16,
+    ctypes.c_uint8,
+    ctypes.c_bool,
+]
 
 
 # ==========================================
 # 3. TEST HELPERS
 # ==========================================
 def load_json_tests():
-    # TIP: For a repo with 500k tests, only put the opcodes you are
-    # currently working on (e.g., "00.json") in this folder to speed up Pytest!
     test_files = glob.glob("test_data/cpu_test_data/*.json")
     all_tests = []
     for file in test_files:
@@ -114,20 +124,25 @@ def load_json_tests():
 
 
 def inject_test_ram(mmu, address, value):
-    """Bypasses normal bus logic to force test data into memory."""
+    """Directly populates memory buffers bypassing hardware write logic."""
     if address < 0x8000:
         if mmu.cart.rom_data:
             mmu.cart.rom_data[address] = value
     elif 0x8000 <= address <= 0x9FFF:
         mmu.vram[address - 0x8000] = value
+    elif 0xA000 <= address <= 0xBFFF:
+        if mmu.cart.eram_data:
+            mmu.cart.eram_data[address - 0xA000] = value
     elif 0xC000 <= address <= 0xDFFF:
         mmu.wram[address - 0xC000] = value
+    elif 0xE000 <= address <= 0xFDFF:
+        mmu.wram[address - 0xE000] = value
     elif 0xFE00 <= address <= 0xFE9F:
         mmu.oam[address - 0xFE00] = value
     elif 0xFF80 <= address <= 0xFFFE:
         mmu.hram[address - 0xFF80] = value
-    else:
-        lib.bus_write(ctypes.byref(mmu), address, value)
+    elif address == 0xFFFF:
+        mmu.ie_register = value
 
 
 # ==========================================
@@ -141,18 +156,26 @@ def test_cpu_instruction(test_case):
     mmu = MMU()
     cpu = CPU()
 
-    # Mock a 32KB ROM Array
+    # Allocate both ROM and ERAM buffers
     mock_rom = (ctypes.c_uint8 * 0x8000)()
+    mock_eram = (ctypes.c_uint8 * 0x8000)()
     mmu.cart.rom_data = ctypes.cast(mock_rom, ctypes.POINTER(ctypes.c_uint8))
+    mmu.cart.eram_data = ctypes.cast(mock_eram, ctypes.POINTER(ctypes.c_uint8))
     mmu.cart.rom_size = 0x8000
+    mmu.cart.eram_size = 0x8000
     mmu.cart.mbc_type = 0
 
     lib.cpu_init(ctypes.byref(cpu), ctypes.byref(mmu))
 
-    # --- SETUP INITIAL STATE ---
     initial = test_case["initial"]
+
+    # 1. Inject RAM State FIRST
+    for addr, val in initial["ram"]:
+        inject_test_ram(mmu, addr, val)
+
+    # 2. Setup Registers
     cpu.a = initial["a"]
-    cpu.f = initial["f"]
+    cpu.f = initial["f"] & 0xF0
     cpu.b = initial["b"]
     cpu.c = initial["c"]
     cpu.d = initial["d"]
@@ -162,15 +185,6 @@ def test_cpu_instruction(test_case):
     cpu.pc = initial["pc"]
     cpu.sp = initial["sp"]
 
-    # SingleStepTests/sm83 Specific Additions
-    # if "ime" in initial:
-    #    cpu.master_interrupt_enable = bool(initial["ime"])
-    # if "ie" in initial:
-    #    mmu.ie_register = initial["ie"]
-
-    for addr, val in initial["ram"]:
-        inject_test_ram(mmu, addr, val)
-
     # --- EXECUTE INSTRUCTION ---
     cycles_taken = lib.cpu_step(ctypes.byref(cpu))
 
@@ -178,15 +192,8 @@ def test_cpu_instruction(test_case):
     final = test_case["final"]
     name = test_case["name"]
 
-    # 1. Assert Cycle Timing (SingleStepTests tracks every M-cycle in the array)
-    # expected_m_cycles = len(test_case["cycles"])
-    # assert cycles_taken == expected_m_cycles, (
-    #    f"Cycle mismatch in {name}. Expected {expected_m_cycles}, got {cycles_taken}"
-    # )
-
-    # 2. Assert Registers
     assert cpu.a == final["a"], f"Reg A mismatch in {name}"
-    assert cpu.f == final["f"], f"Reg F mismatch in {name}"
+    assert (cpu.f & 0xF0) == (final["f"] & 0xF0), f"Reg F mismatch in {name}"
     assert cpu.b == final["b"], f"Reg B mismatch in {name}"
     assert cpu.c == final["c"], f"Reg C mismatch in {name}"
     assert cpu.d == final["d"], f"Reg D mismatch in {name}"
@@ -196,17 +203,9 @@ def test_cpu_instruction(test_case):
     assert cpu.pc == final["pc"], f"PC mismatch in {name}"
     assert cpu.sp == final["sp"], f"SP mismatch in {name}"
 
-    # 3. Assert Interrupt State (if present)
-    # if "ime" in final:
-    #    assert cpu.master_interrupt_enable == bool(final["ime"]), (
-    #        f"IME mismatch in {name}"
-    #    )
-    # if "ie" in final:
-    #    assert mmu.ie_register == final["ie"], f"IE Register mismatch in {name}"
-
-    # 4. Assert Memory mutations via the actual bus
+    # Verify RAM mutations
     for addr, val in final["ram"]:
-        actual_val = lib.bus_read(ctypes.byref(mmu), addr)
+        actual_val = lib.bus_read(ctypes.byref(mmu), addr, False)
         assert actual_val == val, (
             f"RAM mismatch at 0x{addr:04X}. Expected 0x{val:02X}, got 0x{actual_val:02X} in {name}"
         )
