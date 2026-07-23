@@ -26,11 +26,13 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
 
     // By default, set everything to false / none
     cart->eram_enabled = false;
+    cart->eram_unlocked = false;
     cart->mbc_type = MBC_NONE;
     cart->has_battery = false;
     cart->has_rtc = false;
     cart->current_rom_bank = 1; // Bank 0 is fixed, switchable area starts at 1
     cart->current_ram_bank = 0; // Good idea to initialize this too!
+    cart->banking_mode = 0;
     switch (cartridge_type) {
     // Based on this cartridge_type, determine the mbc_type, has_battery, has_rtc and eram_enabled
     case 0x00:
@@ -152,7 +154,7 @@ bool cartridge_load(Cartridge* cart, const char* filepath)
     }
 
     // Now that we have the cartridge data, we need the rom and ram sizes
-    cart->rom_size = 32 * (0x4000) * (1 << cart->rom_data[0x0148]);
+    cart->rom_size = (0x8000) * (1 << cart->rom_data[0x0148]);
     cart->total_rom_banks = 2 << cart->rom_data[0x0148];
 
     if (cart->eram_enabled) {
@@ -319,8 +321,8 @@ uint8_t cartridge_read(Cartridge* cart, uint16_t address)
         return cart->rom_data[address];
     } else if (address >= 0x4000 && address <= 0x7FFF) {
         // each bank is 16 KiB
-        // map for bank n is (address - 0x4000) + (n - 1) * (16KiB)
-        uint32_t mapped_address = (address - 0x4000) + (cart->current_rom_bank - 1) * (0x4000);
+        // map for bank n is (address - 0x4000) + (n * 16KiB)
+        uint32_t mapped_address = (address - 0x4000) + (cart->current_rom_bank * 0x4000);
         if (mapped_address < cart->rom_size) {
             return cart->rom_data[mapped_address];
         }
@@ -328,17 +330,87 @@ uint8_t cartridge_read(Cartridge* cart, uint16_t address)
     } else if (address >= 0xA000 && address <= 0xBFFF) {
         // each bank is 8 KiB
         // bank n is (address - 0xA000) + (n * 8 KiB)
-        if (cart->eram_enabled && cart->eram_data != NULL) {
+        if (cart->eram_enabled && cart->eram_unlocked && cart->eram_data != NULL) {
             uint32_t mapped_address = (address - 0xA000) + (cart->current_ram_bank * 0x2000);
             if (mapped_address < cart->eram_size) {
-                return cart->rom_data[mapped_address];
+                return cart->eram_data[mapped_address];
             }
         }
         return 0xFF;
     }
     return 0xFF;
 }
+
 void cartridge_write(Cartridge* cart, uint16_t address, uint8_t value)
 {
-    return;
+    // writes to ROM area are intercepted by the MBC for bank switching, etc
+    if (address < 0x8000) {
+        // MBCs handle unlocking RAM by writing a value to address 0x0000 to 0x1FFF
+        // lower nibble of 0x0A unlocks RAM where any other value locks it
+        if (address < 0x2000) {
+            if (cart->mbc_type != MBC_NONE) {
+                cart->eram_unlocked = ((value & 0x0F) == 0x0A);
+            }
+            return;
+        }
+
+        switch (cart->mbc_type) {
+        case MBC_NONE:
+            // no MBC present so writes to ROM do nothing
+            break;
+
+        case MBC_1:
+            if (address >= 0x2000 && address < 0x4000) {
+                // 0x2000 - 0x3FFF: ROM Bank Number (Lower 5 bits)
+                uint8_t lower_5 = value & 0x1F;
+                if (lower_5 == 0) {
+                    lower_5 = 1; // bank 0 is mapped to Bank 1
+                }
+                // retain the upper bits, replace the lower 5 bits
+                cart->current_rom_bank = (cart->current_rom_bank & 0xE0) | lower_5;
+
+            } else if (address >= 0x4000 && address < 0x6000) {
+                // 0x4000 - 0x5FFF: RAM Bank Number / Upper Bits of ROM Bank
+                uint8_t upper_2 = value & 0x03;
+
+                if (cart->banking_mode == 0) {
+                    // mode 0: Update upper bits of ROM bank, lock RAM bank to 0
+                    cart->current_rom_bank = (cart->current_rom_bank & 0x1F) | (upper_2 << 5);
+                    cart->current_ram_bank = 0;
+                } else {
+                    // mode 1: Update RAM bank, lock upper bits of ROM bank to 0
+                    cart->current_rom_bank = cart->current_rom_bank & 0x1F;
+                    cart->current_ram_bank = upper_2;
+                }
+
+            } else if (address >= 0x6000 && address < 0x8000) {
+                // 0x6000 - 0x7FFF: Banking Mode Select
+                // 0 = ROM Banking Mode, 1 = RAM Banking Mode
+                cart->banking_mode = value & 0x01;
+            }
+            break;
+
+        case MBC_3:
+        case MBC_5:
+            // MBC3 and MBC5 have slightly different banking logic
+            // MBC5 allows ROM bank 0 to actually be 0, and uses full 8 bits for banking
+            if (address >= 0x2000 && address < 0x3000 && cart->mbc_type == MBC_5) {
+                cart->current_rom_bank = (cart->current_rom_bank & 0x100) | value;
+            }
+            // this is not complete yet
+            break;
+
+        default:
+            break;
+        }
+    }
+    // external RAM (eram) writes
+    else if (address >= 0xA000 && address < 0xC000) {
+        if (cart->eram_enabled && cart->eram_unlocked && cart->eram_data != NULL) {
+            uint32_t mapped_address = (address - 0xA000) + (cart->current_ram_bank * 0x2000);
+            if (mapped_address < cart->eram_size) {
+                cart->eram_data[mapped_address] = value;
+            }
+        }
+    }
 }

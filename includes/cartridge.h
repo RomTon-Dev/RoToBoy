@@ -23,10 +23,12 @@ typedef struct {
     uint8_t current_ram_bank;
     uint8_t total_ram_banks; // Total number of 8 KiB RAM banks
     bool eram_enabled;
+    bool eram_unlocked;
 
     mbc_type_t mbc_type; // e.g. MBC_NONE, MBC_1, etc
     bool has_battery; // True if RAM needs to be saved to a .sav file
     bool has_rtc; // True if the cart has a Real-Time Clock (MBC3)
+    uint8_t banking_mode;
 
 } Cartridge;
 
