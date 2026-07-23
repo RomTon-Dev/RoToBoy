@@ -319,5 +319,5 @@ void cartridge_write(Cartridge* cart, uint16_t address, uint8_t value)
 
 uint8_t cartridge_read(Cartridge* cart, uint16_t address)
 {
-    return 0xFF;
+    return 0x00;
 }
