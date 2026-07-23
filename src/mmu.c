@@ -12,7 +12,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
     // DMA bus lock
     if (mmu->dma_active && address < 0xFF00) {
-        return 0xFF;
+        return 0x00;
     }
 
     // Cartridge OR Boot ROM access
@@ -32,7 +32,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
     // VRAM access
     if (address < 0xA000) {
         // TODO: forward to PPU
-        return 0xFF;
+        return 0x00;
     }
 
     // External RAM access (Cartridge SRAM)
@@ -53,12 +53,12 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
     // OAM access
     if (address < 0xFEA0) {
         // TODO: forward to PPU
-        return 0xFF;
+        return 0x00;
     }
 
     // Unusable / Restricted Memory
     if (address < 0xFF00) {
-        return 0xFF; // Usually reads as 0xFF or 0x00 on real hardware
+        return 0x00; // Usually reads as 0xFF or 0x00 on real hardware
     }
 
     // IO Registers ($FF00 - $FF7F)
@@ -67,18 +67,18 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
         // Joypad
         if (address == 0xFF00) {
             // return joypad_read(&mmu->joypad);
-            return 0xFF; // STUB
+            return 0x00; // STUB
         }
 
         // Serial Transfer (unused unless doing multiplayer)
         if (address == 0xFF01 || address == 0xFF02) {
-            return 0xFF;
+            return 0x00;
         }
 
         // Hardware Timer and divider
         if (address >= 0xFF04 && address <= 0xFF07) {
             // return timer_read(&mmu->timer, address);
-            return 0xFF; // STUB
+            return 0x00; // STUB
         }
 
         // Interrupt Flag (IF)
@@ -90,7 +90,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
         // Audio (APU)
         if (address >= 0xFF10 && address <= 0xFF3F) {
             // return apu_read(&mmu->apu, address);
-            return 0xFF; // STUB
+            return 0x00; // STUB
         }
 
         // OAM DMA Register
@@ -101,17 +101,17 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
         // Graphics (PPU)
         if (address >= 0xFF40 && address <= 0xFF4B) {
             // return ppu_read(&mmu->ppu, address);
-            return 0xFF; // STUB
+            return 0x00; // STUB
         }
 
         // Boot ROM Disable Register
         if (address == 0xFF50) {
             // On an original Game Boy, reading this register returns 0xFF
-            return 0xFF;
+            return 0x00;
         }
 
         // Any unmapped IO registers return 0xFF (Open Bus)
-        return 0xFF;
+        return 0x00;
     }
 
     // HRAM access
@@ -126,7 +126,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
     // Should never be reached because of the bounds above
     fprintf(stderr, "Unhandled memory read at %04X\n", address);
-    return 0xFF;
+    return 0x00;
 }
 
 void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)

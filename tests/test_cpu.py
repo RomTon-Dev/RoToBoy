@@ -182,6 +182,14 @@ def test_cpu_instruction(test_case):
 
     initial = test_case["initial"]
 
+    # initialise memory to 0
+    ctypes.memset(mock_rom, 0, ctypes.sizeof(mock_rom))
+    ctypes.memset(mock_eram, 0, ctypes.sizeof(mock_eram))
+    ctypes.memset(mmu.vram, 0, ctypes.sizeof(mmu.vram))
+    ctypes.memset(mmu.wram, 0, ctypes.sizeof(mmu.wram))
+    ctypes.memset(mmu.oam, 0, ctypes.sizeof(mmu.oam))
+    ctypes.memset(mmu.hram, 0, ctypes.sizeof(mmu.hram))
+
     # 1. Inject RAM State FIRST
     for addr, val in initial["ram"]:
         inject_test_ram(mmu, addr, val)
