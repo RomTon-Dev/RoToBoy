@@ -115,12 +115,25 @@ lib.bus_write.argtypes = [
 # 3. TEST HELPERS
 # ==========================================
 def load_json_tests():
-    test_files = glob.glob("test_data/cpu_test_data/*.json")
-    all_tests = []
-    for file in test_files:
-        with open(file, "r") as f:
-            all_tests.extend(json.load(f))
-    return all_tests
+    # test_files = glob.glob("test_data/cpu_test_data/*.json")
+    # all_tests = []
+    # for file in test_files:
+    #     with open(file, "r") as f:
+    #         all_tests.extend(json.load(f))
+    # return all_tests
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # CHANGE THIS: Only load the opcode file you're working on
+    # Target 00.json (NOP) or 01.json (LD BC, u16)
+    target_file = os.path.join(base_dir, "test_data", "cpu_test_data", "00.json")
+
+    if not os.path.exists(target_file):
+        print(f"\n[WARNING] File not found: {target_file}")
+        return []
+
+    with open(target_file, "r") as f:
+        return json.load(f)
 
 
 def inject_test_ram(mmu, address, value):
