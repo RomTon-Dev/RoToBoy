@@ -23,13 +23,20 @@ class Cartridge(ctypes.Structure):
 
 class MMU(ctypes.Structure):
     _fields_ = [
+        ("raw_memory", ctypes.POINTER(ctypes.c_uint8)),
+        ("test_mode", ctypes.c_bool),
         ("cart", Cartridge),
-        ("vram", ctypes.c_uint8 * 0x2000),
+        ("boot_rom", ctypes.c_uint8 * 256),
         ("wram", ctypes.c_uint8 * 0x2000),
-        ("oam", ctypes.c_uint8 * 0xA0),
         ("hram", ctypes.c_uint8 * 0x7F),
-        ("ie_register", ctypes.c_uint8),
         ("boot_rom_mapped", ctypes.c_bool),
+        ("dma_source_high", ctypes.c_uint8),
+        ("if_register", ctypes.c_uint8),
+        ("ie_register", ctypes.c_uint8),
+        ("dma_active", ctypes.c_bool),
+        ("dma_byte", ctypes.c_uint8),
+        ("dma_delay", ctypes.c_uint8),
+        ("dma_source_address", ctypes.c_uint8),
     ]
 
 
@@ -116,18 +123,20 @@ lib.bus_write.argtypes = [
 # 3. TEST HELPERS
 # ==========================================
 def load_json_tests():
-    # test_files = glob.glob("test_data/cpu_test_data/*.json")
-    # all_tests = []
-    # for file in test_files:
-    #     with open(file, "r") as f:
-    #         all_tests.extend(json.load(f))
-    # return all_tests
+    # """
+    test_files = sorted(glob.glob("test_data/cpu_test_data/*.json"))
+    all_tests = []
+    for file in test_files:
+        with open(file, "r") as f:
+            all_tests.extend(json.load(f))
+    return all_tests
+    # """
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # CHANGE THIS: Only load the opcode file you're working on
     # Target 00.json (NOP) or 01.json (LD BC, u16)
-    target_file = os.path.join(base_dir, "test_data", "cpu_test_data", "01.json")
+
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    target_file = os.path.join(base_dir, "test_data", "cpu_test_data", "93.json")
 
     if not os.path.exists(target_file):
         print(f"\n[WARNING] File not found: {target_file}")
@@ -135,6 +144,7 @@ def load_json_tests():
 
     with open(target_file, "r") as f:
         return json.load(f)
+    """
 
 
 def inject_test_ram(mmu, address, value):
@@ -165,35 +175,35 @@ def inject_test_ram(mmu, address, value):
 ALL_TESTS = load_json_tests()
 
 
-@pytest.mark.parametrize("test_case", ALL_TESTS, ids=lambda tc: tc["name"])
-def test_cpu_instruction(test_case):
+# 1. Reuse the memory block and CPU/MMU instances across tests
+@pytest.fixture(scope="module")
+def emulator():
     mmu = MMU()
     cpu = CPU()
+    # Allocate the 64 KiB block ONCE in memory
+    memory_block = (ctypes.c_uint8 * 0x10000)()
+    mmu.raw_memory = ctypes.cast(memory_block, ctypes.POINTER(ctypes.c_uint8))
 
-    # Allocate both ROM and ERAM buffers
-    mock_rom = (ctypes.c_uint8 * 0x8000)()
-    mock_eram = (ctypes.c_uint8 * 0x8000)()
-    mmu.cart.rom_data = ctypes.cast(mock_rom, ctypes.POINTER(ctypes.c_uint8))
-    mmu.cart.eram_data = ctypes.cast(mock_eram, ctypes.POINTER(ctypes.c_uint8))
-    mmu.cart.rom_size = 0x8000
-    mmu.cart.eram_size = 0x8000
-    mmu.cart.mbc_type = 0
+    return cpu, mmu, memory_block
+
+
+# 2. Pass the fixture into your test
+@pytest.mark.parametrize("test_case", ALL_TESTS, ids=lambda tc: tc["name"])
+def test_cpu_instruction(test_case, emulator):
+    cpu, mmu, memory_block = emulator
+
+    # Fast zero-out of existing RAM without re-allocating
+    ctypes.memset(memory_block, 0, ctypes.sizeof(memory_block))
+    ctypes.memset(ctypes.byref(cpu), 0, ctypes.sizeof(CPU))
 
     lib.cpu_init(ctypes.byref(cpu), ctypes.byref(mmu))
+    mmu.test_mode = True
 
     initial = test_case["initial"]
 
-    # initialise memory to 0
-    ctypes.memset(mock_rom, 0, ctypes.sizeof(mock_rom))
-    ctypes.memset(mock_eram, 0, ctypes.sizeof(mock_eram))
-    ctypes.memset(mmu.vram, 0, ctypes.sizeof(mmu.vram))
-    ctypes.memset(mmu.wram, 0, ctypes.sizeof(mmu.wram))
-    ctypes.memset(mmu.oam, 0, ctypes.sizeof(mmu.oam))
-    ctypes.memset(mmu.hram, 0, ctypes.sizeof(mmu.hram))
-
     # 1. Inject RAM State FIRST
     for addr, val in initial["ram"]:
-        inject_test_ram(mmu, addr, val)
+        memory_block[addr] = val
 
     # 2. Setup Registers
     cpu.a = initial["a"]
@@ -209,28 +219,45 @@ def test_cpu_instruction(test_case):
     # 3. Setup PC and prime the pipeline IR
     cpu.pc = initial["pc"]
 
-    # Manually fetch the instruction byte from initial["pc"] into cpu.ir
-    cpu.ir = lib.bus_read(ctypes.byref(mmu), cpu.pc, False)
-    cpu.pc += 1  # Pipeline increments PC upon prefetch
-
     # --- EXECUTE INSTRUCTION ---
-
+    cpu.ir = lib.bus_read(ctypes.byref(mmu), cpu.pc, True)  # fetch instruction
+    cpu.pc += 1
     lib.cpu_step(ctypes.byref(cpu))
 
     # --- ASSERT FINAL STATE ---
     final = test_case["final"]
     name = test_case["name"]
 
-    assert cpu.a == final["a"], f"Reg A mismatch in {name}"
-    assert (cpu.f & 0xF0) == (final["f"] & 0xF0), f"Reg F mismatch in {name}"
-    assert cpu.b == final["b"], f"Reg B mismatch in {name}"
-    assert cpu.c == final["c"], f"Reg C mismatch in {name}"
-    assert cpu.d == final["d"], f"Reg D mismatch in {name}"
-    assert cpu.e == final["e"], f"Reg E mismatch in {name}"
-    assert cpu.h == final["h"], f"Reg H mismatch in {name}"
-    assert cpu.l == final["l"], f"Reg L mismatch in {name}"
-    assert cpu.pc == final["pc"], f"PC mismatch in {name}"
-    assert cpu.sp == final["sp"], f"SP mismatch in {name}"
+    assert cpu.a == final["a"], (
+        f"Reg A mismatch in {name}. Expected 0x{final['a']:02X}, got 0x{cpu.a:02X}"
+    )
+    assert (cpu.f & 0xF0) == (final["f"] & 0xF0), (
+        f"Reg F mismatch in {name}. Expected 0x{final['f']:02X}, got 0x{cpu.f:02X}"
+    )
+    assert cpu.b == final["b"], (
+        f"Reg B mismatch in {name}. Expected 0x{final['b']:02X}, got 0x{cpu.b:02X}"
+    )
+    assert cpu.c == final["c"], (
+        f"Reg C mismatch in {name}. Expected 0x{final['c']:02X}, got 0x{cpu.c:02X}"
+    )
+    assert cpu.d == final["d"], (
+        f"Reg D mismatch in {name}. Expected 0x{final['d']:02X}, got 0x{cpu.d:02X}"
+    )
+    assert cpu.e == final["e"], (
+        f"Reg E mismatch in {name}. Expected 0x{final['e']:02X}, got 0x{cpu.e:02X}"
+    )
+    assert cpu.h == final["h"], (
+        f"Reg H mismatch in {name}. Expected 0x{final['h']:02X}, got 0x{cpu.h:02X}"
+    )
+    assert cpu.l == final["l"], (
+        f"Reg L mismatch in {name}. Expected 0x{final['l']:02X}, got 0x{cpu.l:02X}"
+    )
+    assert cpu.sp == final["sp"], (
+        f"SP mismatch in {name}. Expected 0x{final['sp']:04X}, got 0x{cpu.sp:04X}"
+    )
+    assert ((cpu.pc - 1) & 0xFFFF) == final["pc"], (
+        f"PC mismatch in {name}. Expected 0x{final['pc']:04X}, got 0x{cpu.pc:04X}"
+    )
 
     # Verify RAM mutations
     for addr, val in final["ram"]:
