@@ -6,6 +6,10 @@
 #include <stdint.h>
 
 typedef struct {
+    // FOR TESTING IN PYTEST, WHICH TREATS MEMORY AS A FLAT 64 KiB ARRAY
+    uint8_t* raw_memory; // Pointer to a flat 64 KiB array in Python
+    bool test_mode;
+
     // EXTERNAL SUB-COMPONENTS (they manage their own IO)
 
     Cartridge* cart; // External rom cartridge

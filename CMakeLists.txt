@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(PROJECT_SOURCES
     src/cartridge.c
     src/mmu.c
+    src/cpu.c
 )
 
 # 4. Define the core library (for ctypes) and the executable

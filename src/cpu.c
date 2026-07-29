@@ -1,6 +1,7 @@
 #include "cpu.h"
 #include "mmu.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #define ADD 0
 #define ADC 1
@@ -55,6 +56,7 @@ void cpu_init(CPU* cpu, mmu* mmu)
     if (mmu) {
         cpu->mmu = mmu;
         mmu->boot_rom_mapped = true;
+        mmu->test_mode = false;
         // add initialisation for boot rom (hardcoded)
 
         memset(mmu->wram, 0, sizeof(mmu->wram));
@@ -92,6 +94,8 @@ void cpu_step(CPU* cpu)
         system_tick(cpu->mmu);
         return;
     }
+    // fprintf(stderr, "\n[DEBUG] Executing PC: 0x%04X | IR: 0x%02X\n",
+    //  cpu->pc, cpu->ir);
 
     // rememer IR already containes the correct opcode fetched in previous execution
     if (cpu->ir == 0xCB) {
