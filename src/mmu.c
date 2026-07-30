@@ -1,10 +1,18 @@
 #include "mmu.h"
-#include "cartridge.h"
+#include "joypad.h"
 #include <stdint.h>
 #include <stdio.h>
 
 uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 {
+
+    if (mmu->test_mode && mmu->raw_memory) {
+        // fprintf(stderr, "\n[DEBUG] Memory access to: 0x%04X | returning: 0x%02X\n", address, mmu->raw_memory[address]);
+        return mmu->raw_memory[address];
+    } else {
+        // fprintf(stderr, "\n[DEBUG] non test memory access\n");
+    }
+
     // If called by the CPU, other hardware components must progress 1 M-cycle
     if (is_cpu) {
         system_tick(mmu);
@@ -66,8 +74,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
         // Joypad
         if (address == 0xFF00) {
-            // return joypad_read(&mmu->joypad);
-            return 0xFF; // STUB
+            return joypad_read();
         }
 
         // Serial Transfer (unused unless doing multiplayer)
@@ -131,6 +138,9 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
 void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 {
+    if (mmu->test_mode && mmu->raw_memory) {
+        mmu->raw_memory[address] = value;
+    }
     // If called by the CPU, other hardware components must progress 1 M-cycle
     if (is_cpu) {
         system_tick(mmu);
@@ -188,7 +198,7 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 
         // Joypad
         if (address == 0xFF00) {
-            // joypad_write(&mmu->joypad, value);
+            joypad_write(value);
             return;
         }
 
