@@ -3,28 +3,28 @@
 
 #include <stdint.h>
 
-typedef enum {
-    TIMER_NOTHING,
-    TIMER_APU_DIV,
-    TIMER_INTERRUPT,
-    TIMER_APU_DIV_INTERRUPT
-} timer_tick_output;
+#define TIMER_TICK_NONE 0 // 0000
+#define TIMER_TICK_APU_DIV 1 // 0001
+#define TIMER_TICK_INTERRUPT 2 // 0010
 
 typedef struct {
-    uint8_t DIV; // FF04 - divider register, incremented at a rate of 16384 hz (64 M-cycles)
+    uint16_t system_counter; // increments every M-cycle. DIV (FF04) is the top 8 bits of system_counter
     uint8_t TIMA; // FF05 - Timer counter, incremented at frequency determined by TAC
     uint8_t TMA; // FF06 - timer modulo
     uint8_t TAC; // FF07 - timer control, contols TIMA
 
-    // Internal state
-    int div_state_clock; // increments every tick, resets at 64
-    int tima_state_clock; // increments every tick, resets corresponding to TAC
 } timer;
 
 uint8_t timer_read(timer* timer, uint16_t address);
 
-void timer_write(timer* timer, uint16_t address, uint8_t value);
+uint8_t timer_write(timer* timer, uint16_t address, uint8_t value);
+// keep in mind writing to DIV resets the system counter, which may also increment TIMA as a falling edge may be detected
+// Changing which bit of the system counter is selected (by changing the “Clock select” bits of TAC) from a bit currently set to another that
+// is currently unset, will send a “Timer tick” pulse.
+// returns any relevent bitflags defined above
 
-timer_tick_output timer_tick(timer* timer);
+uint8_t timer_tick(timer* timer);
+// Increases the system_counter by 4, and changes TIMA according to the values of system_counter, TMA and TAC
+// returns any relevent bitflags defined above
 
 #endif
