@@ -1,4 +1,5 @@
 #include "timer.h"
+#include <stdbool.h>
 #include <stdio.h>
 
 #define APU_DIV_BIT (1 << 12) // Bit 4 of DIV = bit 12 of system_counter
@@ -29,6 +30,38 @@ uint8_t timer_read(timer* timer, uint16_t address)
 
 uint8_t timer_write(timer* timer, uint16_t address, uint8_t value)
 {
+    switch (address) {
+    case 0xFF04:
+        // any write to DIV resets the system timer
+        return set_system_counter(timer, 0);
+    case 0xFF05:
+        if (timer->tima_reset_delay > 0) {
+            // abort reset
+            timer->tima_reset_delay = 0;
+        }
+        timer->TIMA = value;
+        return TIMER_NONE;
+    case 0xFF06:
+        timer->TMA = value;
+        return TIMER_NONE;
+    case 0xFF07: {
+        uint8_t tac_div_bits[4] = { 9, 3, 5, 7 };
+
+        uint16_t old_bit = 1 << tac_div_bits[TAC_FREQ];
+        bool old_clock = (timer->system_counter & old_bit) != 0 && TAC_ENABLE != 0;
+
+        timer->TAC = value | 0xF8; // top 5 bits are 1
+
+        uint16_t new_bit = 1 << tac_div_bits[TAC_FREQ];
+        bool new_clock = (timer->system_counter & new_bit) != 0 && TAC_ENABLE != 0;
+
+        if (old_clock && !new_clock) {
+            tima_tick(timer);
+        }
+        return TIMER_NONE;
+    }
+    }
+    fprintf(stderr, "error: timer access at invalid address\n");
     return 0xFF;
 }
 
