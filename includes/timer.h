@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-#define TIMER_TICK_NONE 0 // 0000
-#define TIMER_TICK_APU_DIV 1 // 0001
-#define TIMER_TICK_INTERRUPT 2 // 0010
+#define TIMER_NONE 0 // 0000
+#define TIMER_APU_DIV 1 // 0001
+#define TIMER_INTERRUPT 2 // 0010
 
 typedef struct {
     uint16_t system_counter; // increments every M-cycle. DIV (FF04) is the top 8 bits of system_counter
@@ -13,6 +13,8 @@ typedef struct {
     uint8_t TMA; // FF06 - timer modulo
     uint8_t TAC; // FF07 - timer control, contols TIMA
 
+    // internal state
+    uint8_t tima_reset_delay; // set to 1 when TIMA overflows, as it takes an M-cycle to reset
 } timer;
 
 uint8_t timer_read(timer* timer, uint16_t address);
