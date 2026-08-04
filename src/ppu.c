@@ -1,4 +1,5 @@
 #include "ppu.h"
+#include <stdint.h>
 #include <string.h>
 
 void ppu_init(PPU* ppu)
@@ -78,4 +79,69 @@ uint8_t ppu_read(PPU* ppu, uint16_t address)
         }
     }
     return 0xFF;
+}
+
+void ppu_write(PPU* ppu, uint16_t address, uint8_t value)
+{
+    if (address >= 0x8000 && address <= 0x9FFF) {
+        // handle VRAM access
+        if (ppu->current_mode == PPU_MODE_TRANSFER) {
+            // access to VRAM is blocked in this mode
+            return;
+        }
+        ppu->vram[address - 0x8000] = value;
+    } else if (address >= 0xFE00 && address <= 0xFE9F) {
+        if (ppu->current_mode == PPU_MODE_TRANSFER || ppu->current_mode == PPU_MODE_OAM) {
+            // access to OAM is blocked in these modes
+            return;
+        }
+        // handle OAM access
+        ppu->oam[address - 0xFE00] = value;
+    } else if (address >= 0xFF40 && address <= 0xFF4B) {
+        // handle Register access
+        switch (address) {
+        case 0xFF40:
+            ppu->lcdc = value;
+            break;
+        case 0xFF41:
+            // bits 0, 1, and 2 are read-only
+            // bit 7 is always 1
+            // keep the old bottom 3 bits
+            // take the new top bits (3-6)
+            ppu->stat = (value & 0x78) | (ppu->stat & 0x07) | 0x80;
+            break;
+        case 0xFF42:
+            ppu->scy = value;
+            break;
+        case 0xFF43:
+            ppu->scx = value;
+            break;
+        case 0xFF44:
+            // ly is read-only
+            // writing to it resets it to 0
+            ppu->ly = 0x00;
+            break;
+        case 0xFF45:
+            ppu->lyc = value;
+            break;
+        case 0xFF47:
+            ppu->bgp = value;
+            break;
+        case 0xFF48:
+            ppu->obp0 = value;
+            break;
+        case 0xFF49:
+            ppu->obp1 = value;
+            break;
+        case 0xFF4A:
+            ppu->wy = value;
+            break;
+        case 0xFF4B:
+            ppu->wx = value;
+            break;
+        default:
+            break;
+        }
+    }
+    return;
 }
