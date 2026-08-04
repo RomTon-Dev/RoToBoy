@@ -145,3 +145,103 @@ void ppu_write(PPU* ppu, uint16_t address, uint8_t value)
     }
     return;
 }
+
+void ppu_tick(PPU* ppu)
+{
+    // This is where the meat happens
+    // check if the LCD is turned on (bit 7 of lcdc)
+    if ((ppu->lcdc & 0x80) == 0) {
+        // if LCD is off the PPU does not tick
+        // reset state so it's ready when turned back on
+        ppu->m_cycle_counter = 0;
+        ppu->ly = 0;
+        ppu->current_mode = PPU_MODE_HBLANK;
+
+        // update the stat register to reflect HBlank mode
+        ppu->stat &= 0xFC; // Clear bottom 2 bits
+        return;
+    }
+
+    ppu->m_cycle_counter++;
+    bool mode_changed = false;
+
+    // check if the mode has changed
+    switch (ppu->current_mode) {
+    case PPU_MODE_OAM:
+        if (ppu->m_cycle_counter >= 20) { // takes 20 M-cycles
+            ppu->m_cycle_counter -= 20;
+            ppu->current_mode = PPU_MODE_TRANSFER;
+            mode_changed = true;
+        }
+        break;
+    case PPU_MODE_TRANSFER:
+        if (ppu->m_cycle_counter >= 43) { // takes 43 M-cycles
+            ppu->m_cycle_counter -= 43;
+            ppu->current_mode = PPU_MODE_HBLANK;
+            mode_changed = true;
+
+            // this is where the pixels should be drawn to the window
+        }
+        break;
+    case PPU_MODE_HBLANK:
+        if (ppu->m_cycle_counter >= 51) { // takes 51 M-cycles
+            // HBLANK is when the scanline is complete so move to the next
+            ppu->m_cycle_counter -= 51;
+            ppu->ly++; // scanline is complete, move down one line
+
+            if (ppu->ly == GB_SCREEN_HEIGHT) { // LY == 144
+                ppu->current_mode = PPU_MODE_VBLANK;
+                mode_changed = true;
+
+                // trigger vblank interrupt & flag frame ready
+                ppu->request_vblank_interrupt = true;
+                ppu->frame_ready = true;
+            } else {
+                ppu->current_mode = PPU_MODE_OAM;
+                mode_changed = true;
+            }
+        }
+        break;
+    case PPU_MODE_VBLANK: // takes 114 M-cycles per line, for 10 lines
+        if (ppu->m_cycle_counter >= PPU_MCYCLES_PER_SCANLINE) {
+            ppu->m_cycle_counter -= PPU_MCYCLES_PER_SCANLINE;
+            ppu->ly++;
+
+            if (ppu->ly > 153) { // 144 to 153 is 10 lines
+                ppu->ly = 0; // Reset back to top of screen
+                ppu->current_mode = PPU_MODE_OAM;
+                mode_changed = true;
+                ppu->window_line = 0; // Reset internal window counter
+            }
+        }
+        break;
+    default:
+        break;
+    }
+
+    // update and check stat register for interrupts
+    if (mode_changed) {
+        // update the bottom 2 bits of STAT with the new mode
+        ppu->stat = (ppu->stat & 0xFC) | ppu->current_mode;
+
+        // check mode-based STAT interrupts
+        if (ppu->current_mode == PPU_MODE_HBLANK && (ppu->stat & 0x08)) {
+            ppu->request_stat_interrupt = true;
+        } else if (ppu->current_mode == PPU_MODE_VBLANK && (ppu->stat & 0x10)) {
+            ppu->request_stat_interrupt = true;
+        } else if (ppu->current_mode == PPU_MODE_OAM && (ppu->stat & 0x20)) {
+            ppu->request_stat_interrupt = true;
+        }
+    }
+
+    // update the lyc=ly flag
+    if (ppu->ly == ppu->lyc) {
+        ppu->stat |= 0x04; // set bit 2
+        // check if lyc=ly interrupt is enabled
+        if (ppu->stat & 0x40) {
+            ppu->request_stat_interrupt = true;
+        }
+    } else {
+        ppu->stat &= ~0x04; // clear bit 2
+    }
+}
