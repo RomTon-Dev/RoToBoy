@@ -3,6 +3,7 @@
 // header file for the MMU (sometimes called bus), which is what the CPU calls when it wants to access memory. It will perform the validation
 // and checks and will perform the memory routing according to the memory map.
 #include "cartridge.h"
+#include "timer.h"
 #include <stdint.h>
 
 typedef struct {
@@ -13,7 +14,7 @@ typedef struct {
     // EXTERNAL SUB-COMPONENTS (they manage their own IO)
 
     Cartridge* cart; // External rom cartridge
-    // GB-Timer timer;
+    timer* timer;
     // PPU ppu;
     // APU apu;
 

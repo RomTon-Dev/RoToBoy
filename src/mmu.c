@@ -1,5 +1,6 @@
 #include "mmu.h"
 #include "joypad.h"
+#include "timer.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -19,7 +20,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
     }
 
     // DMA bus lock
-    if (mmu->dma_active && address < 0xFF00) {
+    if (mmu->dma_active && is_cpu && address < 0xFF00) {
         return 0xFF;
     }
 
@@ -84,8 +85,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
         // Hardware Timer and divider
         if (address >= 0xFF04 && address <= 0xFF07) {
-            // return timer_read(&mmu->timer, address);
-            return 0xFF; // STUB
+            return timer_read(mmu->timer, address);
         }
 
         // Interrupt Flag (IF)
@@ -147,7 +147,7 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
     }
 
     // DMA bus lock
-    if (mmu->dma_active && address < 0xFF00) {
+    if (mmu->dma_active && is_cpu && address < 0xFF00) {
         return;
     }
 
@@ -204,7 +204,10 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 
         // Hardware Timers
         if (address >= 0xFF04 && address <= 0xFF07) {
-            // timer_write(&mmu->timer, address, value);
+            uint8_t res = timer_write(mmu->timer, address, value);
+            if (res & TIMER_APU_DIV) {
+                // apu_div_tick(mmu->apu);
+            }
             return;
         }
 
@@ -298,5 +301,12 @@ void system_tick(mmu* mmu)
     dma_tick(mmu);
     // ppu_tick(mmu->ppu);
     // apu_tick(mmu->apu);
-    // timer_tick(mmu->timer);
+    uint8_t flags = timer_tick(mmu->timer);
+    if (flags & TIMER_APU_DIV) {
+        // apu_div_tick(mmu->apu);
+    }
+    if (flags & TIMER_INTERRUPT) {
+        // schedule interrupt (doesn't take an M-cycle)
+        mmu->if_register |= 0x04;
+    }
 }
