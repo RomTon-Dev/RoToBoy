@@ -50,7 +50,7 @@ typedef struct {
 } PPU;
 
 void ppu_init(PPU* ppu);
-void ppu_tick(PPU* ppu);
+uint8_t ppu_tick(PPU* ppu);
 uint8_t ppu_read(PPU* ppu, uint16_t address);
 void ppu_write(PPU* ppu, uint16_t address, uint8_t value);
 

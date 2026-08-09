@@ -148,8 +148,11 @@ void ppu_write(PPU* ppu, uint16_t address, uint8_t value)
     return;
 }
 
-void ppu_tick(PPU* ppu)
+uint8_t ppu_tick(PPU* ppu)
 {
+    uint8_t interrupt_flags = 0x00;
+    ppu->request_stat_interrupt = false;
+    ppu->request_vblank_interrupt = false;
     // This is where the meat happens
     // check if the LCD is turned on (bit 7 of lcdc)
     if ((ppu->lcdc & 0x80) == 0) {
@@ -161,7 +164,7 @@ void ppu_tick(PPU* ppu)
 
         // update the stat register to reflect HBlank mode
         ppu->stat &= 0xFC; // Clear bottom 2 bits
-        return;
+        return interrupt_flags;
     }
 
     ppu->m_cycle_counter++;
@@ -247,6 +250,15 @@ void ppu_tick(PPU* ppu)
     } else {
         ppu->stat &= ~0x04; // clear bit 2
     }
+
+    if (ppu->request_stat_interrupt) {
+        interrupt_flags |= 0x02;
+    }
+    if (ppu->request_vblank_interrupt) {
+        interrupt_flags |= 0x01;
+    }
+
+    return interrupt_flags;
 }
 
 static void draw_scanline(PPU* ppu)
