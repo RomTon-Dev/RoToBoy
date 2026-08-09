@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <string.h>
 
+static void draw_scanline(PPU* ppu);
+
 void ppu_init(PPU* ppu)
 {
     // zero out arrays
@@ -181,6 +183,7 @@ void ppu_tick(PPU* ppu)
             mode_changed = true;
 
             // this is where the pixels should be drawn to the window
+            draw_scanline(ppu);
         }
         break;
     case PPU_MODE_HBLANK:
@@ -243,5 +246,159 @@ void ppu_tick(PPU* ppu)
         }
     } else {
         ppu->stat &= ~0x04; // clear bit 2
+    }
+}
+
+static void draw_scanline(PPU* ppu)
+{
+    uint8_t ly = ppu->ly;
+    uint8_t bg_colour_index[GB_SCREEN_WIDTH]; // raw 0-3 BG/window colour index, needed for sprite priority
+
+    bool bg_window_enable = (ppu->lcdc & 0x01) != 0;
+    bool window_enable = (ppu->lcdc & 0x20) != 0;
+    bool sprite_enable = (ppu->lcdc & 0x02) != 0;
+    bool sprite_size_16 = (ppu->lcdc & 0x04) != 0;
+    bool bg_tile_map_hi = (ppu->lcdc & 0x08) != 0; // 1 => 0x9C00, 0 => 0x9800
+    bool win_tile_map_hi = (ppu->lcdc & 0x40) != 0;
+    bool tile_data_lo = (ppu->lcdc & 0x10) != 0; // 1 => 0x8000 unsigned addressing, 0 => 0x8800 signed
+
+    bool window_could_show = window_enable && bg_window_enable && (ppu->wy <= ly);
+    bool window_was_drawn = false;
+
+    // ---- Background & Window ----
+    for (int x = 0; x < GB_SCREEN_WIDTH; x++) {
+        uint8_t colour_index = 0;
+
+        if (bg_window_enable) {
+            bool use_window = window_could_show && (x + 7 >= ppu->wx);
+
+            uint8_t map_x, map_y;
+            uint16_t tile_map_base;
+
+            if (use_window) {
+                map_x = (uint8_t)(x - (ppu->wx - 7));
+                map_y = ppu->window_line;
+                tile_map_base = win_tile_map_hi ? 0x9C00 : 0x9800;
+                window_was_drawn = true;
+            } else {
+                map_x = (uint8_t)(x + ppu->scx);
+                map_y = (uint8_t)(ly + ppu->scy);
+                tile_map_base = bg_tile_map_hi ? 0x9C00 : 0x9800;
+            }
+
+            uint8_t tile_col = map_x / 8;
+            uint8_t tile_row = map_y / 8;
+            uint8_t pixel_x = map_x % 8;
+            uint8_t pixel_y = map_y % 8;
+
+            uint16_t tile_map_addr = tile_map_base + (tile_row * 32) + tile_col;
+            uint8_t tile_index = ppu->vram[tile_map_addr - 0x8000];
+
+            uint16_t tile_data_addr;
+            if (tile_data_lo) {
+                tile_data_addr = 0x8000 + (tile_index * 16);
+            } else {
+                tile_data_addr = 0x9000 + ((int8_t)tile_index * 16);
+            }
+            tile_data_addr += pixel_y * 2;
+
+            uint8_t byte_lo = ppu->vram[tile_data_addr - 0x8000];
+            uint8_t byte_hi = ppu->vram[(tile_data_addr + 1) - 0x8000];
+
+            uint8_t bit = 7 - pixel_x;
+            uint8_t lo_bit = (byte_lo >> bit) & 0x01;
+            uint8_t hi_bit = (byte_hi >> bit) & 0x01;
+            colour_index = (hi_bit << 1) | lo_bit;
+        }
+
+        bg_colour_index[x] = colour_index;
+        ppu->framebuffer[ly * GB_SCREEN_WIDTH + x] = (ppu->bgp >> (colour_index * 2)) & 0x03;
+    }
+
+    if (window_was_drawn) {
+        ppu->window_line++;
+    }
+
+    // ---- Sprites ----
+    if (sprite_enable) {
+        uint8_t sprite_height = sprite_size_16 ? 16 : 8;
+
+        // Find up to 10 sprites visible on this scanline, in OAM order.
+        int visible[10];
+        int visible_count = 0;
+
+        for (int i = 0; i < 40 && visible_count < 10; i++) {
+            uint8_t sprite_y = ppu->oam[i * 4 + 0];
+            int screen_y = (int)sprite_y - 16;
+
+            if (ly >= screen_y && ly < screen_y + sprite_height) {
+                visible[visible_count++] = i;
+            }
+        }
+
+        // DMG priority: lowest X wins; ties broken by lowest OAM index.
+        // We render back-to-front, so sort highest priority to the END of the array.
+        for (int a = 0; a < visible_count - 1; a++) {
+            for (int b = 0; b < visible_count - a - 1; b++) {
+                uint8_t x_b = ppu->oam[visible[b] * 4 + 1];
+                uint8_t x_b1 = ppu->oam[visible[b + 1] * 4 + 1];
+                if (x_b < x_b1) {
+                    int tmp = visible[b];
+                    visible[b] = visible[b + 1];
+                    visible[b + 1] = tmp;
+                }
+            }
+        }
+
+        for (int s = 0; s < visible_count; s++) {
+            int i = visible[s];
+            uint8_t sprite_y = ppu->oam[i * 4 + 0];
+            uint8_t sprite_x = ppu->oam[i * 4 + 1];
+            uint8_t tile_index = ppu->oam[i * 4 + 2];
+            uint8_t attributes = ppu->oam[i * 4 + 3];
+
+            int screen_y = (int)sprite_y - 16;
+            int screen_x = (int)sprite_x - 8;
+
+            bool y_flip = (attributes & 0x40) != 0;
+            bool x_flip = (attributes & 0x20) != 0;
+            bool bg_priority = (attributes & 0x80) != 0; // 1 = BG/window colours 1-3 render over sprite
+            bool use_obp1 = (attributes & 0x10) != 0;
+
+            int row = ly - screen_y;
+            if (y_flip) {
+                row = sprite_height - 1 - row;
+            }
+
+            if (sprite_size_16) {
+                tile_index &= 0xFE; // bit 0 ignored in 8x16 mode
+            }
+
+            uint16_t tile_data_addr = 0x8000 + (tile_index * 16) + (row * 2);
+            uint8_t byte_lo = ppu->vram[tile_data_addr - 0x8000];
+            uint8_t byte_hi = ppu->vram[(tile_data_addr + 1) - 0x8000];
+
+            for (int col = 0; col < 8; col++) {
+                int x = screen_x + col;
+                if (x < 0 || x >= GB_SCREEN_WIDTH) {
+                    continue;
+                }
+
+                int bit = x_flip ? col : (7 - col);
+                uint8_t lo_bit = (byte_lo >> bit) & 0x01;
+                uint8_t hi_bit = (byte_hi >> bit) & 0x01;
+                uint8_t colour_index = (hi_bit << 1) | lo_bit;
+
+                if (colour_index == 0) {
+                    continue; // transparent
+                }
+                if (bg_priority && bg_colour_index[x] != 0) {
+                    continue; // BG/window pixel wins
+                }
+
+                uint8_t palette = use_obp1 ? ppu->obp1 : ppu->obp0;
+                ppu->framebuffer[ly * GB_SCREEN_WIDTH + x] = (palette >> (colour_index * 2)) & 0x03;
+            }
+        }
     }
 }
