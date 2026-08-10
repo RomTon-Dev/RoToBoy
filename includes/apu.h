@@ -1,17 +1,21 @@
 #ifndef APU_H
 #define APU_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define SAMPLES 32
 #define BUFFER_SIZE 4096
 
 typedef struct {
-    uint8_t NRx0;
-    uint8_t NRx1;
-    uint8_t NRx2;
-    uint8_t NRx3;
-    uint8_t NRx4;
+    uint8_t NRx0; // channel specific feature (if present)
+    uint8_t NRx1; // controls length timer
+    uint8_t NRx2; // controls volume and envelope
+    uint8_t NRx3; // controls the period
+    uint8_t NRx4; // has the channels trigger and length timer enable bits, as well as any leftover bits of period
+
+    bool activated;
+    uint8_t length_timer;
 } channel;
 
 typedef struct {
