@@ -31,6 +31,12 @@ typedef struct {
     int16_t circular_buffer[BUFFER_SIZE]; // circular queue with audio signals so there are no gaps
     uint16_t buffer_head;
     uint16_t buffer_tail;
+
+    // audio accumulating variables
+    double sample_accumulator;
+    int32_t left_sample_sum;
+    int32_t right_sample_sum;
+    uint8_t sample_sum_count;
 } apu;
 
 void apu_init(apu* apu);
@@ -39,7 +45,7 @@ void apu_init(apu* apu);
 void apu_tick(apu* apu);
 // ticks the apu by 1 M-cycle, this involves:
 // ticking all channel timers
-// incremented sample_accumulator
+// incrementing sample_accumulator
 // pushing the mixed channel outputs to the ring buffer if accumulator > 24
 
 uint8_t apu_read(apu* apu, uint16_t address);
@@ -48,6 +54,8 @@ uint8_t apu_read(apu* apu, uint16_t address);
 void apu_write(apu* apu, uint16_t address, uint8_t value);
 // wrties to the corresponding sound register the value given
 
-void apu_pop_from_buffer(apu* apu, int16_t left_sample, int16_t right_sample);
-// reads from the head, and advances the head pointer by 1
+void apu_pop_from_buffer(apu* apu, int16_t* out_left, int16_t out_right);
+// reads from the head, and advances the head pointer by 2
+void apu_div_tick(apu* apu);
+// Steps the internal Frame Sequencer (ticks volume envelopes, sweeps, and length counters)
 #endif
