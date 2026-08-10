@@ -14,17 +14,63 @@ typedef struct {
     uint8_t NRx3; // controls the period
     uint8_t NRx4; // has the channels trigger and length timer enable bits, as well as any leftover bits of period
 
-    bool activated;
+    bool activated; // activated by a write to Nrx4's 7th bit
+    bool dac_enabled; // true iff (NRx2 & 0xF8) != 0
+
     uint8_t length_timer;
-} channel;
+    uint8_t sweep_timer;
+    bool sweep_enabled;
+    uint8_t shadow_register;
+    uint8_t duty_step;
+} channel1;
 
 typedef struct {
+    uint8_t NRx1; // controls length timer
+    uint8_t NRx2; // controls volume and envelope
+    uint8_t NRx3; // controls the period
+    uint8_t NRx4; // has the channels trigger and length timer enable bits, as well as any leftover bits of period
+
+    bool activated;
+    bool dac_enabled; // true iff (NRx2 & 0xF8) != 0
+
+    uint8_t length_timer;
+    uint8_t duty_step;
+} channel2;
+
+typedef struct {
+    uint8_t NRx0; // channel specific feature (if present)
+    uint8_t NRx1; // controls length timer
+    uint8_t NRx2; // controls volume and envelope
+    uint8_t NRx3; // controls the period
+    uint8_t NRx4; // has the channels trigger and length timer enable bits, as well as any leftover bits of period
+
+    bool activated;
+    bool dac_enabled; // true iff (NRx2 & 0xF8) != 0
+
+    uint8_t length_timer;
+    uint8_t sample_index;
+} channel3;
+
+typedef struct {
+    uint8_t NRx0; // channel specific feature (if present)
+    uint8_t NRx1; // controls length timer
+    uint8_t NRx2; // controls volume and envelope
+    uint8_t NRx3; // controls the period
+    uint8_t NRx4; // has the channels trigger and length timer enable bits, as well as any leftover bits of period
+
+    bool activated;
+    uint8_t length_timer;
+} channel4;
+
+typedef struct {
+    uint8_t div_apu_ticks;
+
     // channels
-    channel channel_1; // pulse with period sweep
-    channel channel_2; // pulese
-    channel channel_3; // wave output
+    channel1 channel_1; // pulse with period sweep
+    channel2 channel_2; // pulese
+    channel3 channel_3; // wave output
     uint8_t wave_ram[SAMPLES / 2]; // wave ram, each byte holds two samples
-    channel channel_4; // noise
+    channel4 channel_4; // noise
 
     // global control registers
     uint8_t NR50; // FF24 - Master Volume & VIN panning
