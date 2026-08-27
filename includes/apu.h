@@ -18,9 +18,13 @@ typedef struct {
     bool dac_enabled; // true iff (NRx2 & 0xF8) != 0
 
     uint8_t length_timer;
+
     uint8_t sweep_timer;
     bool sweep_enabled;
+    uint8_t internal_pace;
+
     uint8_t shadow_register;
+    uint16_t period_divider;
     uint8_t duty_step;
 } channel1;
 
@@ -34,6 +38,7 @@ typedef struct {
     bool dac_enabled; // true iff (NRx2 & 0xF8) != 0
 
     uint8_t length_timer;
+    uint16_t period_divider;
     uint8_t duty_step;
 } channel2;
 
@@ -47,8 +52,12 @@ typedef struct {
     bool activated;
     bool dac_enabled; // true iff (NRx2 & 0xF8) != 0
 
+    uint8_t wave_ram[SAMPLES / 2]; // wave ram, each byte holds two samples
     uint8_t length_timer;
+
+    uint16_t period_divider;
     uint8_t sample_index;
+    uint8_t sample_buffer;
 } channel3;
 
 typedef struct {
@@ -60,6 +69,9 @@ typedef struct {
 
     bool activated;
     uint8_t length_timer;
+
+    uint16_t LFSR;
+    uint8_t period_divider;
 } channel4;
 
 typedef struct {
@@ -69,7 +81,6 @@ typedef struct {
     channel1 channel_1; // pulse with period sweep
     channel2 channel_2; // pulese
     channel3 channel_3; // wave output
-    uint8_t wave_ram[SAMPLES / 2]; // wave ram, each byte holds two samples
     channel4 channel_4; // noise
 
     // global control registers
