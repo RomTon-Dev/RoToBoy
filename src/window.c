@@ -34,4 +34,22 @@ void init_emulator_window(Emulator_Window* emulator_window)
         }
     }
 }
-void draw_frame(const Emulator_Window* emulator_window);
+void draw_frame(const Emulator_Window* emulator_window)
+{
+    // We take the framebuffer from emulator_window and draw the pixels to sdl window
+    SDL_UpdateTexture(
+        emulator_window->texture,
+        NULL, // NULL means update the entire texture
+        emulator_window->frame_buffer,
+        GB_SCREEN_WIDTH * sizeof(uint32_t) // Pitch: the number of bytes in a row of pixel data
+    );
+
+    // We the current renderer target
+    SDL_RenderClear(emulator_window->renderer);
+
+    // Copy the texture to the rendering context
+    SDL_RenderCopy(emulator_window->renderer, emulator_window->texture, NULL, NULL);
+
+    // Update the screen with the rendering performed
+    SDL_RenderPresent(emulator_window->renderer);
+}
