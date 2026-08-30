@@ -4,7 +4,12 @@
 #include <SDL2/SDL.h>
 #include <stdint.h>
 
-typedef enum { WHITE, LIGHT_GREY, DARK_GREY, BLACK } colour;
+typedef enum {
+    WHITE,
+    LIGHT_GREY,
+    DARK_GREY,
+    BLACK
+} colour;
 // Using ARGB
 uint32_t colours[4] = {
     0xFFFFFFFF, // WHITE
@@ -14,12 +19,13 @@ uint32_t colours[4] = {
 };
 
 typedef struct {
-  SDL_Window *window;
-  SDL_Renderer *renderer;
-  SDL_Texture *texture;
-  uint32_t frame_buffer[GB_SCREEN_WIDTH * GB_SCREEN_HEIGHT];
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    SDL_Texture* texture;
+    uint32_t frame_buffer[GB_SCREEN_WIDTH * GB_SCREEN_HEIGHT];
 } Emulator_Window;
 
-void init_emulator_window(Emulator_Window *emulator_window);
-void draw_frame(const Emulator_Window *emulator_window);
+void init_emulator_window(Emulator_Window* emulator_window);
+void draw_frame(const Emulator_Window* emulator_window);
+void destroy_emulator_window(Emulator_Window* emulator_window);
 #endif // WINDOW

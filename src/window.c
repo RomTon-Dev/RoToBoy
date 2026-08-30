@@ -53,3 +53,15 @@ void draw_frame(const Emulator_Window* emulator_window)
     // Update the screen with the rendering performed
     SDL_RenderPresent(emulator_window->renderer);
 }
+
+void destroy_emulator_window(Emulator_Window* emulator_window)
+{
+    if (emulator_window->texture)
+        SDL_DestroyTexture(emulator_window->texture);
+    if (emulator_window->renderer)
+        SDL_DestroyRenderer(emulator_window->renderer);
+    if (emulator_window->window)
+        SDL_DestroyWindow(emulator_window->window);
+
+    SDL_Quit();
+}
