@@ -1,5 +1,6 @@
 #include "mmu.h"
 #include "joypad.h"
+#include "ppu.h"
 #include "timer.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -40,8 +41,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
     // VRAM access
     if (address < 0xA000) {
-        // TODO: forward to PPU
-        return 0xFF;
+        return ppu_read(mmu->ppu, address);
     }
 
     // External RAM access (Cartridge SRAM)
@@ -61,8 +61,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
     // OAM access
     if (address < 0xFEA0) {
-        // TODO: forward to PPU
-        return 0xFF;
+        return ppu_read(mmu->ppu, address);
     }
 
     // Unusable / Restricted Memory
@@ -159,7 +158,7 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 
     // VRAM
     if (address < 0xA000) {
-        // TODO: forward to PPU
+        ppu_write(mmu->ppu, address, value);
         return;
     }
 
@@ -183,7 +182,7 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 
     // OAM (Sprite Attribute Table)
     if (address < 0xFEA0) {
-        // TODO: forward to PPU
+        ppu_write(mmu->ppu, address, value);
         return;
     }
 
@@ -299,7 +298,7 @@ void dma_tick(mmu* mmu)
 void system_tick(mmu* mmu)
 {
     dma_tick(mmu);
-    // ppu_tick(mmu->ppu);
+    mmu->if_register |= ppu_tick(mmu->ppu);
     // apu_tick(mmu->apu);
     uint8_t flags = timer_tick(mmu->timer);
     if (flags & TIMER_APU_DIV) {
