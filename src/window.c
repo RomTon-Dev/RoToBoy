@@ -1,6 +1,8 @@
 #include "window.h"
 #include "ppu.h"
 
+static void translate_frame_data(uint32_t emulator_window_framebuffer[], const uint32_t ppu_framebuffer[]);
+
 void init_emulator_window(Emulator_Window* emulator_window)
 {
     // window
@@ -34,9 +36,10 @@ void init_emulator_window(Emulator_Window* emulator_window)
         }
     }
 }
-void draw_frame(const Emulator_Window* emulator_window)
+void draw_frame(Emulator_Window* emulator_window, const PPU* ppu)
 {
     // We take the framebuffer from emulator_window and draw the pixels to sdl window
+    translate_frame_data(emulator_window->frame_buffer, ppu->framebuffer);
     SDL_UpdateTexture(
         emulator_window->texture,
         NULL, // NULL means update the entire texture
@@ -52,6 +55,14 @@ void draw_frame(const Emulator_Window* emulator_window)
 
     // Update the screen with the rendering performed
     SDL_RenderPresent(emulator_window->renderer);
+}
+static void translate_frame_data(uint32_t emulator_window_framebuffer[], const uint32_t ppu_framebuffer[])
+{
+    for (int i = 0; i < GB_SCREEN_HEIGHT; i++) {
+        for (int j = 0; j < GB_SCREEN_WIDTH; j++) {
+            emulator_window_framebuffer[j + GB_SCREEN_WIDTH * i] = colours[ppu_framebuffer[j + GB_SCREEN_WIDTH * i]];
+        }
+    }
 }
 
 void destroy_emulator_window(Emulator_Window* emulator_window)

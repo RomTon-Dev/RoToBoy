@@ -11,7 +11,7 @@ typedef enum {
     BLACK
 } colour;
 // Using ARGB
-uint32_t colours[4] = {
+const uint32_t colours[4] = {
     0xFFFFFFFF, // WHITE
     0xFFAAAAAA, // LIGHT_GREY
     0xFF555555, // DARK_GREY
@@ -26,6 +26,6 @@ typedef struct {
 } Emulator_Window;
 
 void init_emulator_window(Emulator_Window* emulator_window);
-void draw_frame(const Emulator_Window* emulator_window);
+void draw_frame(Emulator_Window* emulator_window, const PPU* ppu);
 void destroy_emulator_window(Emulator_Window* emulator_window);
 #endif // WINDOW
