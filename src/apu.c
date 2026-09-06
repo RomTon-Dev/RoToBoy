@@ -222,3 +222,66 @@ static void tick_channel_4(apu* apu)
         tick_lfsr(apu);
     }
 }
+
+static void tick_sound_lengths(apu* apu)
+{
+    bool ch_1_length_enabled = apu->channel_1.NRx4 & 0x40;
+    bool ch_2_length_enabled = apu->channel_2.NRx4 & 0x40;
+    bool ch_3_length_enabled = apu->channel_3.NRx4 & 0x40;
+    bool ch_4_length_enabled = apu->channel_4.NRx4 & 0x40;
+
+    if (ch_1_length_enabled && apu->channel_1.length_timer < 64) {
+        if (++apu->channel_1.length_timer == 64) {
+            apu->channel_1.activated = false;
+        }
+    }
+    if (ch_2_length_enabled && apu->channel_2.length_timer < 64) {
+        if (++apu->channel_2.length_timer == 64) {
+            apu->channel_2.activated = false;
+        }
+    }
+    if (ch_3_length_enabled && apu->channel_3.length_timer < 256) {
+        if (++apu->channel_3.length_timer == 256) {
+            apu->channel_3.activated = false;
+        }
+    }
+    if (ch_4_length_enabled && apu->channel_4.length_timer < 64) {
+        if (++apu->channel_4.length_timer == 64) {
+            apu->channel_4.activated = false;
+        }
+    }
+}
+
+/*
+static void tick_volume_envelope(apu* apu, channel* ch)
+{
+    uint8_t pace = ch->NRx2 & 0x07;
+
+    // Pace 0 disables envelope updates
+    if (pace == 0 || !ch->envelope_enabled) {
+        return;
+    }
+
+    if (ch->envelope_timer > 0) {
+        ch->envelope_timer--;
+    }
+
+    if (ch->envelope_timer == 0) {
+        // Reload timer
+        ch->envelope_timer = pace;
+
+        bool direction = (ch->NRx2 & 0x08) != 0;
+
+        if (direction && ch->current_volume < 15) {
+            ch->current_volume++;
+        } else if (!direction && ch->current_volume > 0) {
+            ch->current_volume--;
+        }
+
+        // Disable envelope if min/max boundary reached
+        if (ch->current_volume == 0 || ch->current_volume == 15) {
+            ch->envelope_enabled = false;
+        }
+    }
+}
+*/
