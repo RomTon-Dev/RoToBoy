@@ -106,8 +106,7 @@ uint8_t bus_read(mmu* mmu, uint16_t address, bool is_cpu)
 
         // Graphics (PPU)
         if (address >= 0xFF40 && address <= 0xFF4B) {
-            // return ppu_read(&mmu->ppu, address);
-            return 0xFF; // STUB
+            return ppu_read(mmu->ppu, address);
         }
 
         // Boot ROM Disable Register
@@ -225,7 +224,7 @@ void bus_write(mmu* mmu, uint16_t address, uint8_t value, bool is_cpu)
 
         // Graphics (PPU)
         if (address >= 0xFF40 && address <= 0xFF4B && address != 0xFF46) {
-            // ppu_write(&mmu->ppu, address, value);
+            ppu_write(mmu->ppu, address, value);
             return;
         }
 
