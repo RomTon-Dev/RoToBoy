@@ -12,6 +12,57 @@
 #include "timer.h"
 #include "window.h"
 
+static void handle_events(mmu* system_mmu, bool* is_running)
+{
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
+            *is_running = false;
+        } else if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
+            if (event.key.repeat) {
+                continue;
+            }
+
+            bool is_pressed = (event.type == SDL_KEYDOWN);
+            bool request_interrupt = false;
+
+            switch (event.key.keysym.sym) {
+            case SDLK_UP:
+                request_interrupt = joypad_set_button(GB_BUTTON_UP, is_pressed);
+                break;
+            case SDLK_DOWN:
+                request_interrupt = joypad_set_button(GB_BUTTON_DOWN, is_pressed);
+                break;
+            case SDLK_LEFT:
+                request_interrupt = joypad_set_button(GB_BUTTON_LEFT, is_pressed);
+                break;
+            case SDLK_RIGHT:
+                request_interrupt = joypad_set_button(GB_BUTTON_RIGHT, is_pressed);
+                break;
+            case SDLK_z:
+                request_interrupt = joypad_set_button(GB_BUTTON_B, is_pressed);
+                break;
+            case SDLK_x:
+                request_interrupt = joypad_set_button(GB_BUTTON_A, is_pressed);
+                break;
+            case SDLK_RETURN:
+                request_interrupt = joypad_set_button(GB_BUTTON_START, is_pressed);
+                break;
+            case SDLK_BACKSPACE:
+                request_interrupt = joypad_set_button(GB_BUTTON_SELECT, is_pressed);
+                break;
+            default:
+                break;
+            }
+
+            // If a button was pressed, trigger the Joypad interrupt in the MMU
+            if (request_interrupt) {
+                system_mmu->if_register |= 0x10;
+            }
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 2) {
@@ -44,15 +95,9 @@ int main(int argc, char** argv)
     cpu_init(&system_cpu, &system_mmu);
 
     bool is_running = true;
-    SDL_Event event;
 
     while (is_running) {
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                is_running = false;
-            }
-            // Map joypad input here
-        }
+        handle_events(&system_mmu, &is_running);
 
         while (!system_ppu.frame_ready) {
             cpu_step(&system_cpu);
