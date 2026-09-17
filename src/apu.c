@@ -252,36 +252,45 @@ static void tick_sound_lengths(apu* apu)
     }
 }
 
-/*
-static void tick_volume_envelope(apu* apu, channel* ch)
+static void tick_single_envelope(uint8_t nrx2, uint8_t* timer, uint8_t* volume, bool* enabled)
 {
-    uint8_t pace = ch->NRx2 & 0x07;
-
-    // Pace 0 disables envelope updates
-    if (pace == 0 || !ch->envelope_enabled) {
+    // If the envelope is disabled or pace is 0, do nothing
+    if (!(*enabled)) {
         return;
     }
 
-    if (ch->envelope_timer > 0) {
-        ch->envelope_timer--;
+    if (*timer > 0) {
+        (*timer)--;
     }
 
-    if (ch->envelope_timer == 0) {
-        // Reload timer
-        ch->envelope_timer = pace;
+    if (*timer == 0) {
+        // reload timer and change volume
+        uint8_t pace = nrx2 & 0x07;
+        *timer = pace;
 
-        bool direction = (ch->NRx2 & 0x08) != 0;
+        bool direction = (nrx2 & 0x08) != 0;
 
-        if (direction && ch->current_volume < 15) {
-            ch->current_volume++;
-        } else if (!direction && ch->current_volume > 0) {
-            ch->current_volume--;
+        if (direction && *volume < 15) {
+            (*volume)++;
+        } else if (!direction && *volume > 0) {
+            (*volume)--;
         }
 
-        // Disable envelope if min/max boundary reached
-        if (ch->current_volume == 0 || ch->current_volume == 15) {
-            ch->envelope_enabled = false;
+        // disable envelope if boundary is reached
+        if (*volume == 0 || *volume == 15) {
+            *enabled = false;
         }
     }
 }
-*/
+
+static void tick_envelope_sweep(apu* apu)
+{
+    tick_single_envelope(apu->channel_1.NRx2, &apu->channel_1.envelope_timer,
+        &apu->channel_1.current_volume, &apu->channel_1.envelope_enabled);
+
+    tick_single_envelope(apu->channel_2.NRx2, &apu->channel_2.envelope_timer,
+        &apu->channel_2.current_volume, &apu->channel_2.envelope_enabled);
+
+    tick_single_envelope(apu->channel_4.NRx2, &apu->channel_4.envelope_timer,
+        &apu->channel_4.current_volume, &apu->channel_4.envelope_enabled);
+}

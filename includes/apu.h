@@ -26,6 +26,10 @@ typedef struct {
     uint8_t shadow_register;
     uint16_t period_divider;
     uint8_t duty_step;
+
+    uint8_t current_volume;
+    uint8_t envelope_timer;
+    bool envelope_enabled;
 } channel1;
 
 typedef struct {
@@ -40,6 +44,10 @@ typedef struct {
     uint8_t length_timer;
     uint16_t period_divider;
     uint8_t duty_step;
+
+    uint8_t current_volume;
+    uint8_t envelope_timer;
+    bool envelope_enabled;
 } channel2;
 
 typedef struct {
@@ -58,6 +66,7 @@ typedef struct {
     uint16_t period_divider;
     uint8_t sample_index;
     uint8_t sample_buffer;
+
 } channel3;
 
 typedef struct {
@@ -72,6 +81,10 @@ typedef struct {
 
     uint16_t LFSR;
     uint8_t period_divider;
+
+    uint8_t current_volume;
+    uint8_t envelope_timer;
+    bool envelope_enabled;
 } channel4;
 
 typedef struct {
