@@ -74,7 +74,7 @@ cmake ../
 cmake --build ./
 
 # Run a ROM
-./rotoboy path/to/rom.gb
+./RoToBoy path/to/rom.gb
 ```
 
 ## Disclaimer
