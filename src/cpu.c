@@ -1,7 +1,6 @@
 #include "cpu.h"
 #include "mmu.h"
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #define ADD 0
 #define ADC 1
@@ -36,28 +35,27 @@ static bool get_flag(CPU* cpu, uint8_t flag);
 
 void cpu_init(CPU* cpu, mmu* mmu)
 {
+    // Skip the Boot ROM and start exactly where the cartridge expects
+    cpu->pc = 0x0100;
+    cpu->sp = 0xFFFE; // Set Stack Pointer to top of HRAM
 
-    cpu->pc = 0x0000; // Start at the Boot ROM
-    cpu->master_interrupt_enable = false; // Interrupts disabled
-    cpu->halted = false; // CPU starts awake
+    // Standard Game Boy post-boot register values
+    cpu->af = 0x01B0;
+    cpu->bc = 0x0013;
+    cpu->de = 0x00D8;
+    cpu->hl = 0x014D;
+
+    cpu->master_interrupt_enable = false;
+    cpu->halted = false;
     cpu->stopped = false;
-    cpu->ir = 0; // nop
-
-    cpu->a = 0x00;
-    cpu->f = 0x00;
-    cpu->b = 0x00;
-    cpu->c = 0x00;
-    cpu->d = 0x00;
-    cpu->e = 0x00;
-    cpu->h = 0x00;
-    cpu->l = 0x00;
-    cpu->sp = 0x0000; // Will be initialized by the Boot ROM
+    cpu->ir = 0;
 
     if (mmu) {
         cpu->mmu = mmu;
-        mmu->boot_rom_mapped = true;
+
+        mmu->boot_rom_mapped = false;
+
         mmu->test_mode = false;
-        // add initialisation for boot rom (hardcoded)
 
         memset(mmu->wram, 0, sizeof(mmu->wram));
         memset(mmu->hram, 0, sizeof(mmu->hram));
@@ -72,9 +70,7 @@ void cpu_init(CPU* cpu, mmu* mmu)
         mmu->dma_source_high = 0x00;
         mmu->dma_source_address = 0x0000;
 
-        // external hardware:
-        mmu->cart = NULL; // initially no cartridge inserted
-        // add initalisations for ppu, apu, timer, joypad once implimented
+        cpu->ir = bus_read(mmu, cpu->pc++, false);
     }
 }
 

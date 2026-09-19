@@ -12,6 +12,7 @@ static char* get_save_filepath(const char* filepath);
 
 bool cartridge_load(Cartridge* cart, const char* filepath)
 {
+
     if (cart == NULL || filepath == NULL) {
         return false;
     }
@@ -316,6 +317,11 @@ void cartridge_free(Cartridge* cart)
 
 uint8_t cartridge_read(Cartridge* cart, uint16_t address)
 {
+    if (cart == NULL || cart->rom_data == NULL) {
+        printf("CRITICAL ERROR: MMU passed an invalid cartridge pointer!\n");
+        return 0xFF; // Safe fallback value
+    }
+
     if (address <= 0x3FFF) {
         // this is the fixed bank
         return cart->rom_data[address];

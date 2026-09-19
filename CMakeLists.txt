@@ -8,10 +8,19 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Find the SDL2 library (Required for window management and rendering)
+find_package(SDL2 REQUIRED)
+
+# Include ALL subsystem source files
 set(PROJECT_SOURCES
+    src/apu.c
     src/cartridge.c
-    src/mmu.c
     src/cpu.c
+    src/joypad.c
+    src/mmu.c
+    src/ppu.c
+    src/timer.c
+    src/window.c
 )
 
 # 4. Define the core library (for ctypes) and the executable
@@ -20,7 +29,7 @@ add_library(MyProjectLib SHARED
     ${PROJECT_SOURCES}
 )
 
-# Move the .so to tests/lib
+# Move the .so to tests/test_data
 set_target_properties(MyProjectLib PROPERTIES 
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_data"
 )
@@ -29,15 +38,18 @@ add_executable(MyProject
     src/main.c
 )
 
-# Link the library to the executable
-target_link_libraries(MyProject PRIVATE MyProjectLib)
+# Link the core library and SDL2 to the executable and library
+target_link_libraries(MyProjectLib PUBLIC ${SDL2_LIBRARIES})
+target_link_libraries(MyProject PRIVATE MyProjectLib ${SDL2_LIBRARIES})
 
-# 5. Tell CMake where to find your header files
+# 5. Tell CMake where to find your header files, including SDL2
 target_include_directories(MyProjectLib PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/includes
+    ${SDL2_INCLUDE_DIRS}
 )
 target_include_directories(MyProject PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/includes
+    ${SDL2_INCLUDE_DIRS}
 )
 
 # 6. Add compiler warnings

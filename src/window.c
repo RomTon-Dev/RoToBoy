@@ -5,6 +5,10 @@ static void translate_frame_data(uint32_t emulator_window_framebuffer[], const u
 
 void init_emulator_window(Emulator_Window* emulator_window)
 {
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+        return;
+    }
     // window
     emulator_window->window = SDL_CreateWindow(
         "RoToBoy",

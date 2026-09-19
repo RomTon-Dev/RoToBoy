@@ -222,3 +222,21 @@ static void tick_channel_4(apu* apu)
         tick_lfsr(apu);
     }
 }
+
+void apu_init(apu* apu)
+{
+    // TODO: implement
+    (void)apu; // Cast to void to prevent "unused parameter" compiler warnings
+}
+
+static void tick_sound_lengths(apu* apu)
+{
+    // TODO: implement
+    (void)apu;
+}
+
+static void tick_envelope_sweep(apu* apu)
+{
+    // TODO: implement
+    (void)apu;
+}
