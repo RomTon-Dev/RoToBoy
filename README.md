@@ -1,49 +1,67 @@
 # RoToBoy
 
-A GameBoy (DMG) hardware emulator written from scratch.
+A GameBoy (DMG) hardware emulator written in C using SDL2.
 
-RoToBoy emulates the CPU, graphics processor, memory bus, and input systems required to run classic GameBoy games and diagnostic test suites.
+RoToBoy emulates the CPU, graphics processor, memory bus, audio system, and input controllers required to run classic GameBoy games smoothly.
 
 ## Gallery & Compatibility
 
-RoToBoy runs homebrew titles smoothly while passing standard hardware test suites.
+RoToBoy runs homebrew titles smoothly using SDL2 for hardware-accelerated graphics and audio output.
 
-| *DanganGB* | *Spiritfall* | *Tobu Tobu Girl* | 
-| ----- | ----- | ----- | 
-| <img src="./assets/dangan.png" width="240" alt="DanganGB running on RoToBoy"/> | <img src="./assets/spiritfall.png" width="240" alt="Spiritfall running on RoToBoy"/> | <img src="./assets/tobutobu.png" width="240" alt="Tobu Tobu Girl running on RoToBoy"/> | 
-| **MBC None** • Bullet Hell | **MBC1** • Tower Defense | **MBC1** • Arcade Platformer | 
+| *DanganGB* | *Spiritfall* | *Tobu Tobu Girl* |
+| :---: | :---: | :---: |
+| <img src="./assets/dangan.png" width="240" alt="DanganGB running on RoToBoy"/> | <img src="./assets/spiritfall.png" width="240" alt="Spiritfall running on RoToBoy"/> | <img src="./assets/tobutobu.png" width="240" alt="Tobu Tobu Girl running on RoToBoy"/> |
+| **MBC None** • Bullet Hell | **MBC1** • Tower Defense | **MBC1** • Arcade Platformer |
 
 ## Features
 
-* **CPU & Memory:** Complete implementation of the 8-bit CPU instruction set, timing mechanics, and memory mapping.
-* **Graphics Engine:** Rendering engine handling background, window, and sprite layers.
-* **Audio & Timing:** System timers and hardware interrupt handling for game loops.
-* **Compatibility:** Passes key diagnostic test suites to ensure proper hardware emulation.
+* **CPU Core:** Complete 8-bit instruction set decoder, timing evaluation, and interrupt system.
+* **Graphics & Windowing:** PPU implementation rendered via SDL2, supporting background tile maps, window overlays, and sprite layers.
+* **Audio Processing:** APU sound generation implemented via SDL2 audio streams.
+* **Memory Management:** Centralized MMU handling memory-mapped I/O, cartridge banking, and direct memory transfers.
+* **Input & Timing:** Hardware timer implementation and responsive joypad input polling.
+
+## Project Structure
+
+The project is modularly structured into clear C subsystem components:
+
+```text
+RoToBoy/
+├── src/
+│   ├── main.c        # Main loop & SDL initialization
+│   ├── cpu.c         # Sharp LR35902 CPU implementation
+│   ├── mmu.c         # Memory Management Unit & I/O bus
+│   ├── ppu.c         # Pixel Processing Unit (graphics)
+│   ├── apu.c         # Audio Processing Unit
+│   ├── joypad.c      # Input handling & button mapping
+│   ├── timer.c       # Hardware timers & divider registers
+│   ├── cartridge.c   # ROM parsing & memory bank control
+│   └── window.c      # SDL window rendering interface
+└── includes/         # Header definitions for subsystems
+```
 
 ## Controls & Key Mapping
 
 | GameBoy Button | Key |
-| --- | --- |
+| :--- | :--- |
 | D-Pad (Up, Down, Left, Right) | Arrow Keys |
 | A | Z |
 | B | X |
 | Start | Enter |
 | Select | Backspace |
 
-## Hardware Test Suite Compatibility
-
-RoToBoy passes standardized GameBoy accuracy test ROMs:
-
-* [x] **Blargg's CPU Instruction Tests** (`cpu_instrs.gb`)
-* [x] **Blargg's Instruction Timing** (`instr_timing.gb`)
-* [x] **Mooneye GB Test Suite**
-* [x] **`dmg-acid2`** (PPU rendering accuracy)
-
 ## Building & Running
 
 ### Prerequisites
 
-Ensure you have C++ build tools and CMake installed along with any required graphical libraries.
+Ensure you have a C compiler, CMake, and SDL2 development libraries installed on your system.
+
+On Ubuntu/Debian:
+```bash
+sudo apt install build-essential cmake libsdl2-dev
+```
+
+### Build Commands
 
 ```bash
 # Clone the repository
