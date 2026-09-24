@@ -40,5 +40,5 @@ uint8_t cartridge_read(Cartridge* cart, uint16_t address);
 // this will read an address from the ROM and will return the corresponding value, which will depend on which ROM bank is active
 void cartridge_write(Cartridge* cart, uint16_t address, uint8_t value);
 // similar to the above, but will write data
-
+void write_battery_save(Cartridge* cart, const char* filepath);
 #endif

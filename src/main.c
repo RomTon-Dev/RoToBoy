@@ -108,6 +108,7 @@ int main(int argc, char** argv)
         draw_frame(&window, &system_ppu);
     }
 
+    write_battery_save(&cart, argv[1]);
     destroy_emulator_window(&window);
     cartridge_free(&cart);
 

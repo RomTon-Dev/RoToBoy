@@ -230,6 +230,24 @@ static bool load_battery_save(Cartridge* cart, const char* filepath)
     return true;
 }
 
+// save file here
+void write_battery_save(Cartridge* cart, const char* filepath)
+{
+    if (!cart->has_battery)
+        return;
+    char* save_filepath = get_save_filepath(filepath);
+    FILE* save_file = fopen(save_filepath, "wb");
+    if (save_file == NULL) {
+        return; // No save file exists yet
+    }
+
+    // write cart->eram_data to the file
+    fwrite(cart->eram_data, cart->eram_size, 1, save_file);
+
+    fclose(save_file);
+    free(save_filepath);
+}
+
 static char* get_save_filepath(const char* filepath)
 {
     // The filepath is the path to the cartridge
